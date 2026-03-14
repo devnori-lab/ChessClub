@@ -1,2 +1,3 @@
 # ChessClub
-ok code the website, add a 2d chess board as the loading page. make landing page with color theme violet pink blue mix. add minimalist chess piece images of chess pieces of random size floating randomly on landing page, make them move according to my mouse position over the viewport (parallax effect),make them have parallax scroll. add info about university( gbpuat ) and club by researching about it. tabs for upcoming tournament Calendar, puzzle of the day tab, analyze a game, lichess study tab, wall of fame, Opening Repertoire, Game Archive tab (option to upload your game online by), chess Blog/Resources tab :all this in landing page. also join us link that opens a login/sign up page with option of member login and player login. 
+
+https://aditya-upreti.github.io/ChessClub/
