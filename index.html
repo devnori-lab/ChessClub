@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinity | GBPUAT Chess Club</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            /* Dark Mode Defaults (Cyber-Tech) */
+            --theme-primary: #00ffcc;      
+            --theme-secondary: #8a2be2;    
+            --theme-bg-1: #050505;
+            --theme-bg-2: #0f0f13;
+            --theme-bg-3: #110b29;
+            --theme-bg-4: #05050a;
+            
+            --text-main: #f0f0f0;
+            --text-muted: #a0a0a0;
+            --glass-bg: rgba(15, 15, 19, 0.6);
+            --glass-border: rgba(0, 255, 204, 0.2);
+            --nav-bg: linear-gradient(90deg, rgba(5, 5, 5, 0.169) 0%, rgba(20, 20, 25, 0.231) 50%, rgba(5, 5, 5, 0.181) 100%);
+        }
+
+        html {
+  scroll-behavior: smooth; /* This provides a smooth transition when navigating to anchor links */
+}
+
+        /* Light Mode Overrides */
+        body.light-mode {
+            --theme-primary: #007a63;      /* Darker Teal for contrast */
+            --theme-secondary: #5e18a8;    /* Deeper Purple */
+            --theme-bg-1: #f4f7f6;
+            --theme-bg-2: #e2e8f0;
+            --theme-bg-3: #d3dce6;
+            --theme-bg-4: #f8fafc;
+            
+            --text-main: #1a1a24;
+            --text-muted: #5a5a6a;
+            --glass-bg: rgba(255, 255, 255, 0.6);
+            --glass-border: rgba(0, 122, 99, 0.3);
+            --nav-bg: linear-gradient(90deg, rgba(255,255,255,0.95) 0%, rgba(240,240,245,0.85) 50%, rgba(255,255,255,0.95) 100%);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; transition: background-color 0.3s, color 0.3s, border-color 0.3s; }
+html {
+  scroll-behavior: smooth; /* This provides a smooth transition when navigating to anchor links */
+}
+
+        body {
+            background: linear-gradient(
+                -45deg, 
+                var(--theme-bg-1), 
+                var(--theme-bg-2), 
+                var(--theme-bg-3), 
+                var(--theme-bg-4)
+            );
+            background-size: 400% 400%;
+            animation: infiniteGradient 15s ease infinite;
+            color: var(--text-main);
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        @keyframes infiniteGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* --- THREE.JS BACKGROUND --- */
+        #canvas-container {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2;
+        }
+
+        /* --- PARALLAX FLOATING TEXT PIECES --- */
+        #parallax-container {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: -1; pointer-events: none;
+        }
+        
+        .parallax-piece {
+            position: absolute;
+            opacity: 0.15;
+            color: var(--theme-primary);
+            text-shadow: 0 0 15px var(--theme-primary);
+            will-change: transform;
+            user-select: none;
+            line-height: 1;
+        }
+
+        /* --- 2D CHESSBOARD LOADER --- */
+        #loader-container {
+            position: fixed; inset: 0; background: var(--theme-bg-1); 
+            z-index: 9999; display: flex; justify-content: center; align-items: center;
+            flex-direction: column; transition: opacity 1s ease-out;
+        }
+
+        .loader-board {
+            display: grid; grid-template-columns: repeat(4, 40px); grid-template-rows: repeat(4, 40px);
+            gap: 2px; margin-bottom: 30px; transform: rotate(45deg);
+            animation: boardRotate 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .square { width: 100%; height: 100%; border-radius: 2px; }
+        .square.white { background: var(--text-main); opacity: 0.8; }
+        .square.black { background: var(--theme-primary); box-shadow: 0 0 15px var(--theme-primary); }
+
+        @keyframes boardRotate {
+            0% { transform: rotate(0deg) scale(1); }
+            50% { transform: rotate(180deg) scale(1.1); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+
+        .loading-text {
+            font-size: 1.2rem; letter-spacing: 0.4rem; text-transform: uppercase;
+            background: linear-gradient(to right, var(--theme-primary), var(--theme-secondary));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; filter: drop-shadow(0 0 10px var(--theme-primary)); } }
+
+        /* --- MAIN CONTENT & NAVIGATION --- */
+        #main-content { opacity: 0; visibility: hidden; transition: opacity 1.5s ease-in; }
+
+        nav {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 1.2rem 5%; background: var(--nav-bg); backdrop-filter: blur(20px); 
+            position: sticky; top: 0; z-index: 100;
+            border-bottom: 2px solid transparent;
+            border-image: linear-gradient(90deg, transparent, var(--theme-primary), transparent) 1;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+        }
+
+        .logo { font-size: 1.6rem; font-weight: 800; letter-spacing: 2px; }
+        .logo span { color: var(--theme-primary); text-shadow: 0 0 15px rgba(0, 255, 204, 0.4); }
+        .nav-links { display: flex; gap: 2.5rem; list-style: none; align-items: center; }
+        .nav-links a { 
+            color: var(--text-main); text-decoration: none; text-transform: uppercase; 
+            font-size: 0.9rem; font-weight: 600; letter-spacing: 1.5px; position: relative;
+        }
+        
+        .nav-links a:not(.btn)::after {
+            content: ''; position: absolute; width: 0; height: 2px;
+            bottom: -6px; left: 0; background: var(--theme-primary);
+            transition: width 0.3s ease; box-shadow: 0 0 8px var(--theme-primary);
+        }
+        .nav-links a:hover:not(.btn)::after { width: 100%; }
+        .nav-links a:hover { color: var(--theme-primary); text-shadow: 0 0 8px var(--theme-primary); }
+
+        /* --- HERO --- */
+        header {
+            min-height: 90vh; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; text-align: center; padding: 2rem 5%;
+        }
+
+        h1 { font-size: 5rem; line-height: 1.1; margin-bottom: 1rem; }
+        h1 span { background: linear-gradient(to right, var(--theme-primary), var(--theme-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .subtitle { font-size: 1.2rem; color: var(--text-muted); max-width: 700px; margin-bottom: 2.5rem; }
+
+        .btn {
+            padding: 1rem 2.5rem; background: rgba(0, 255, 204, 0.1); color: var(--theme-primary);
+            border: 1px solid var(--theme-primary); border-radius: 4px; cursor: pointer;
+            text-transform: uppercase; letter-spacing: 2px; text-decoration: none; font-weight: bold;
+        }
+        .btn:hover { background: var(--theme-primary); color: var(--theme-bg-1); box-shadow: 0 0 20px rgba(0, 255, 204, 0.5); }
+        .icon-btn { padding: 0.5rem; font-size: 1.2rem; background: transparent; border: 1px solid var(--theme-primary); border-radius: 50%; color: var(--theme-primary); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; }
+        .icon-btn:hover { background: var(--theme-primary); color: var(--theme-bg-1); }
+
+        /* --- SECTIONS & CARDS --- */
+        section { padding: 5rem 10%; }
+        .section-title { font-size: 2.5rem; margin-bottom: 3rem; text-align: center; border-bottom: 2px solid var(--theme-primary); padding-bottom: 0.5rem; display: inline-block; }
+        
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; }
+        
+        .glass-card {
+            background: var(--glass-bg); border: 1px solid var(--glass-border);
+            border-radius: 8px; padding: 2.5rem 2rem; backdrop-filter: blur(10px);
+            transform: translateY(0);
+        }
+        .glass-card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); border-color: var(--theme-primary); }
+        .glass-card h3 { color: var(--theme-primary); margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600; letter-spacing: 1px; }
+        .glass-card p { color: var(--text-muted); line-height: 1.7; font-size: 0.95rem; }
+
+        /* --- LOGIN MODAL --- */
+        #auth-modal {
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px); z-index: 1000; display: none; justify-content: center; align-items: center;
+        }
+        .auth-box { background: var(--glass-bg); border: 1px solid var(--theme-primary); padding: 3rem; border-radius: 8px; width: 100%; max-width: 400px; text-align: center; position: relative; }
+        .auth-tabs { display: flex; margin-bottom: 2rem; border-bottom: 1px solid var(--glass-border); }
+        .auth-tab { flex: 1; padding: 10px; cursor: pointer; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; }
+        .auth-tab.active { color: var(--theme-primary); border-bottom: 2px solid var(--theme-primary); }
+        .auth-input { width: 100%; padding: 14px; margin-bottom: 1rem; border-radius: 4px; background: rgba(0,0,0,0.1); border: 1px solid var(--glass-border); color: var(--text-main); font-family: monospace; }
+        .auth-input:focus { outline: none; border-color: var(--theme-primary); }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 2rem; cursor: pointer; color: var(--theme-primary); line-height: 1; }
+
+        footer { text-align: center; padding: 3rem; background: var(--glass-bg); border-top: 1px solid var(--glass-border); }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div id="parallax-container"></div>
+
+    <div id="loader-container">
+        <div class="loader-board">
+            <div class="square white"></div><div class="square black"></div><div class="square white"></div><div class="square black"></div>
+            <div class="square black"></div><div class="square white"></div><div class="square black"></div><div class="square white"></div>
+            <div class="square white"></div><div class="square black"></div><div class="square white"></div><div class="square black"></div>
+            <div class="square black"></div><div class="square white"></div><div class="square black"></div><div class="square white"></div>
+        </div>
+        <div class="loading-text">Booting Engine...</div>
+    </div>
+
+    <div id="auth-modal">
+        <div class="auth-box">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <h2 style="margin-bottom: 1.5rem; font-weight: 400; letter-spacing: 2px;">ACCESS <span style="color: var(--theme-primary); font-weight: bold;">PORTAL</span></h2>
+            <div class="auth-tabs">
+                <div class="auth-tab active" onclick="switchTab(this)">Member</div>
+                <div class="auth-tab" onclick="switchTab(this)">Player</div>
+            </div>
+            <input type="text" class="auth-input" placeholder="ID / Roll Number">
+            <input type="password" class="auth-input" placeholder="Passkey">
+            <button class="btn" style="width: 100%; margin-top: 1rem;">Authenticate</button>
+            <p style="margin-top: 1.5rem; font-size: 0.8rem; color: var(--text-muted);">System unassigned? <a href="#" style="color: var(--theme-primary); text-decoration: none;">Register</a>.</p>
+        </div>
+    </div>
+
+    <div id="main-content">
+        <nav>
+            <div class="logo">GBPUAT <span>CHESS</span></div>
+            <ul class="nav-links">
+                <li><button id="theme-toggle" class="icon-btn" title="Toggle Theme">🌓</button></li>
+                <li><a href="#about">Terminal</a></li>
+                <li><a href="#features">Modules</a></li>
+                <li><a href="#" class="btn" style="padding: 0.5rem 1.5rem; font-size: 0.85rem;" onclick="openModal()">Connect</a></li>
+            </ul>
+        </nav>
+
+        <header>
+            <h1>Infinite<span>Calculations</span></h1>
+            <p class="subtitle">The official tactical hub for G.B. Pant University of Agriculture & Technology. Where engineering precision meets 64 squares.</p>
+            <a href="#features" class="btn">MAKE YOUR MOVE</a>
+        </header>
+
+        <section id="features">
+            <h2 class="section-title">Active Modules</h2>
+            <div class="grid-container">
+                <div class="glass-card"><h3>Tournament Calendar</h3><p>Track upcoming inter-college blitz, rapid, and classical events at Pantnagar.</p></div>
+                <div class="glass-card"><h3>Puzzle of the Day</h3><p>Daily tactical motifs curated to test your pattern recognition and calculation.</p></div>
+                <div class="glass-card"><h3>Analyze a Game</h3><p>Import your PGNs. Review blunders and brilliancies with our integrated engine.</p></div>
+                <div class="glass-card"><h3>Lichess Study</h3><p>Access private club studies, opening prep, and endgame theory databases.</p></div>
+                <div class="glass-card"><h3>Wall of Fame</h3><p>Celebrating university champions, top-rated players, and club legends.</p></div>
+                <div class="glass-card"><h3>Opening Repertoire</h3><p>Master the fundamental openings and advanced lines favored by our top boards.</p></div>
+                <div class="glass-card"><h3>Game Archive</h3><p>A secure cloud repository to upload and store your OTB and online tournament games.</p></div>
+                <div class="glass-card"><h3>Chess Resources</h3><p>Articles on game psychology, time management, and university club news.</p></div>
+            </div>
+        </section>
+
+        <section id="about" style="background: rgba(0, 0, 0, 0.1); border-top: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border);">
+            <div style="text-align: center; max-width: 800px; margin: 0 auto;">
+                <h2 class="section-title">Built for Pantnagarians</h2>
+                <p style="font-size: 1.1rem; line-height: 1.8; color: var(--text-muted);">
+                    We bring together minds from all disciplines to study the royal game. Whether you are debugging code in the labs or resting on the campus greens, the board is always waiting.
+                </p>
+            </div>
+        </section>
+
+        <footer>
+            <p style="color: var(--text-muted); font-family: monospace; letter-spacing: 1px;">&copy; 2026 GBPUAT CHESS CLUB // SYSTEM NOMINAL</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- THREE.JS SETUP ---
+        const canvasContainer = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true }); 
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        canvasContainer.appendChild(renderer.domElement);
+
+        const geometry = new THREE.TorusKnotGeometry(3, 0.5, 128, 32, 2, 3);
+        const material = new THREE.MeshPhysicalMaterial({ 
+            color: 0x00ffcc, metalness: 0.1, roughness: 0.8, wireframe: true, transparent: true, opacity: 0.15
+        });
+        const infinityKnot = new THREE.Mesh(geometry, material);
+        scene.add(infinityKnot);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        scene.add(ambientLight);
+        
+        const pointLight1 = new THREE.PointLight(0x00ffcc, 2, 50); pointLight1.position.set(5, 5, 5); scene.add(pointLight1);
+        const pointLight2 = new THREE.PointLight(0x8a2be2, 2, 50); pointLight2.position.set(-5, -5, 5); scene.add(pointLight2);
+
+        camera.position.z = 7;
+
+        // --- PARALLAX TEXT PIECES SETUP ---
+        const pContainer = document.getElementById('parallax-container');
+        
+        // Using high-res unicode chess characters instead of images
+        const pieceChars = ['♞', '♛', '♜', '♝', '♚', '♟'];
+        const parallaxData = [];
+        const pieceCount = 18; 
+        
+        for (let i = 0; i < pieceCount; i++) {
+            const el = document.createElement('div');
+            el.innerText = pieceChars[Math.floor(Math.random() * pieceChars.length)];
+            el.className = 'parallax-piece';
+            
+            const size = Math.random() * 80 + 40; // Scaled up slightly for text
+            let startX = Math.random() > 0.5 
+                ? Math.random() * (window.innerWidth * 0.3)
+                : (window.innerWidth * 0.7) + (Math.random() * (window.innerWidth * 0.3));
+
+            const startY = Math.random() * window.innerHeight * 1.5; 
+            const depth = Math.random() * 0.05 + 0.01; 
+            const rotation = Math.random() * 360; 
+
+            el.style.fontSize = `${size}px`;
+            el.style.left = `${startX}px`;
+            el.style.top = `${startY}px`;
+            
+            pContainer.appendChild(el);
+            parallaxData.push({ element: el, baseX: startX, baseY: startY, depth: depth, rotation: rotation });
+        }
+
+        // --- INTERACTIVITY (MOUSE & SCROLL) ---
+        let mouseX = 0; let mouseY = 0; let targetX = 0; let targetY = 0;
+        const windowHalfX = window.innerWidth / 2; const windowHalfY = window.innerHeight / 2; let scrollY = 0;
+
+        document.addEventListener('mousemove', (e) => { mouseX = (e.clientX - windowHalfX); mouseY = (e.clientY - windowHalfY); });
+        window.addEventListener('scroll', () => { scrollY = window.scrollY; });
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- THEME TOGGLE LOGIC ---
+        const themeBtn = document.getElementById('theme-toggle');
+        let isLightMode = false;
+
+        themeBtn.addEventListener('click', () => {
+            isLightMode = !isLightMode;
+            document.body.classList.toggle('light-mode');
+            
+            // Update 3D Lighting and Material Colors
+            if (isLightMode) {
+                infinityKnot.material.color.setHex(0x007a63);
+                pointLight1.color.setHex(0x007a63);
+                pointLight2.color.setHex(0x5e18a8);
+            } else {
+                infinityKnot.material.color.setHex(0x00ffcc);
+                pointLight1.color.setHex(0x00ffcc);
+                pointLight2.color.setHex(0x8a2be2);
+            }
+        });
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            infinityKnot.rotation.x = 0.02; infinityKnot.rotation.y = 0.03; infinityKnot.rotation.z = 0.01;
+
+            targetX = mouseX * 0.001; targetY = mouseY * 0.005;
+            camera.position.x += (targetX - camera.position.x) * 0.05;
+            camera.position.y += (-targetY - camera.position.y) * 0.05;
+            camera.lookAt(scene.position);
+            renderer.render(scene, camera);
+
+            parallaxData.forEach(p => {
+                const moveX = mouseX * p.depth; const moveY = mouseY * p.depth; const scrollOffset = scrollY * p.depth * 5; 
+                p.element.style.transform = `translate(${moveX}px, ${moveY - scrollOffset}px) rotate(${p.rotation}deg)`;
+            });
+        }
+        animate();
+
+        // --- LOADER ---
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const loader = document.getElementById('loader-container');
+                const mainContent = document.getElementById('main-content');
+                loader.style.opacity = '0';
+                setTimeout(() => { loader.style.display = 'none'; mainContent.style.visibility = 'visible'; mainContent.style.opacity = '1'; }, 1000); 
+            }, 2000); 
+        });
+
+        // --- MODALS ---
+        function openModal() { document.getElementById('auth-modal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('auth-modal').style.display = 'none'; }
+        function switchTab(el) { document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
+    </script>
+</body>
+</html>
