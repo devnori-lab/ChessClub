@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Infinity | GBPUAT Chess Club</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#222222">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         :root {
@@ -393,5 +395,15 @@ html {
         function closeModal() { document.getElementById('auth-modal').style.display = 'none'; }
         function switchTab(el) { document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); }
     </script>
+    <script>
+  // Check if the browser supports service workers
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('App ready to install!', reg))
+        .catch(err => console.error('App install failed: ', err));
+    });
+  }
+</script>
 </body>
 </html>

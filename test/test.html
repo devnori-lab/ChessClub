@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Club Leaderboard</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        .admin-panel { background: #f4f4f4; padding: 15px; margin-top: 30px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <h2>Live Leaderboard</h2>
+    <table id="leaderboard">
+        <tr>
+            <th>Player Name</th>
+            <th>Points</th>
+        </tr>
+    </table>
+
+    <div class="admin-panel">
+        <h3>Admin: Add Player</h3>
+        <input type="text" id="nameInput" placeholder="Player Name">
+        <input type="number" id="pointsInput" placeholder="Points">
+        <button onclick="addPlayer()">Add to Database</button>
+        <p id="statusMessage"></p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // 1. Initialize Supabase (REPLACE THESE WITH YOUR KEYS)
+        const supabaseUrl = 'https://polkfxwotialttslajse.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvbGtmeHdvdGlhbHR0c2xhanNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4MjQ4NTksImV4cCI6MjA4OTQwMDg1OX0.JptNOzq2KiQmWszr0GvT3GymBjJUyrzatHz8S0Btkt8';
+        const db = supabase.createClient(supabaseUrl, supabaseKey);
+
+        // 2. Fetch and Display Data
+        async function fetchLeaderboard() {
+            const { data, error } = await db
+                .from('pantnagar_players')
+                .select('*')
+                .order('points', { ascending: false });
+
+            if (error) {
+                console.error("Error fetching data:", error);
+                return;
+            }
+
+            const table = document.getElementById('leaderboard');
+            // Keep the header row, clear the rest
+            table.innerHTML = '<tr><th>Player Name</th><th>Points</th></tr>'; 
+
+            // Add rows for each player
+            data.forEach(player => {
+                table.innerHTML += `<tr><td>${player.player_name}</td><td>${player.points}</td></tr>`;
+            });
+        }
+
+        // 3. Add Data to Supabase
+        async function addPlayer() {
+            const name = document.getElementById('nameInput').value;
+            const points = document.getElementById('pointsInput').value;
+            const statusMessage = document.getElementById('statusMessage');
+
+            statusMessage.innerText = "Saving...";
+
+            const { error } = await db
+                .from('pantnagar_players')
+                .insert([{ player_name: name, points: parseInt(points) }]);
+
+            if (error) {
+                statusMessage.innerText = "Error: " + error.message;
+            } else {
+                statusMessage.innerText = "Success! Updating board...";
+                document.getElementById('nameInput').value = '';
+                document.getElementById('pointsInput').value = '';
+                fetchLeaderboard(); // Refresh the table instantly
+            }
+        }
+
+        // Run this when the page loads
+        fetchLeaderboard();
+    </script>
+</body>
+</html>
