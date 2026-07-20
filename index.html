@@ -1,35 +1,201 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>3D Chess Club | Play & Compete</title>
-  </head>
-  <body>
-    <main id="ui-container">
-      <nav class="navbar">
-        <div class="logo">♟️ GBPUAT Chess Club</div>
-        <button class="btn-secondary" id="login-btn">Member Login</button>
-      </nav>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GBPUAT Chess Club</title>
 
-      <section class="hero">
-        <span class="badge">Next-Gen Tabletop Gaming</span>
-        <h1>INFINITE <br/><span class="highlight">CALCULATIONS</span></h1>
-        <p>Join the university's premier chess community. Challenge players, analyze matches and climb the competitive ladder.</p>
-        
-        <div class="cta-group">
-          <button class="btn-primary" id="play-btn">Play Online Now</button>
-          <button class="btn-outline" id="spectate-btn">Spectate Board</button>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- UI Styles -->
+  <link rel="stylesheet" href="/src/style.css">
+  <link rel="stylesheet" href="/src/sections.css">
+
+  <!-- GSAP + ScrollTrigger, SplitType -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+  <script src="https://unpkg.com/split-type"></script>
+</head>
+<body>
+  <!-- WebGL background — stays fixed behind everything; covered by each
+       section's solid background once you scroll past the hero. -->
+  <div id="stage"></div>
+  <div id="glow-backdrop"></div>
+
+  <!-- Persistent site header -->
+  <header class="site-header ui-element">
+    <div class="logo-group">
+      <div class="logo-shield">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="12" y1="2" x2="12" y2="6"/>
+          <line x1="10" y1="4" x2="14" y2="4"/>
+          <path d="M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1"/>
+          <path d="M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z"/>
+          <line x1="6.5" y1="18" x2="17.5" y2="18"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <span>GBPUAT</span>
+        <span>CHESS CLUB</span>
+      </div>
+    </div>
+    <nav class="desktop-nav">
+      <a href="#events">Events</a>
+      <a href="#standings">Standings</a>
+      <a href="#archive">Games</a>
+      <a href="#honors">Club</a>
+    </nav>
+    <button class="menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobileNav">
+      <span class="line"></span>
+      <span class="line"></span>
+      <span class="line"></span>
+    </button>
+  </header>
+
+  <nav class="mobile-nav" id="mobileNav" aria-hidden="true">
+    <a href="#events"><span>01</span> Events</a>
+    <a href="#standings"><span>02</span> Standings</a>
+    <a href="#archive"><span>03</span> Games</a>
+    <a href="#honors"><span>04</span> Club</a>
+  </nav>
+  <div class="mobile-nav-scrim" id="mobileNavScrim"></div>
+
+  <main>
+
+    <!-- ============================= HERO ============================= -->
+    <section class="hero" id="top">
+
+      <div class="hud-deco" aria-hidden="true">
+        <span class="deco-bracket tl"></span>
+        <span class="deco-bracket tr"></span>
+        <span class="deco-rule"></span>
+        <span class="deco-line left"></span>
+        <span class="deco-line right"></span>
+      </div>
+
+      <aside class="hud-left ui-element">
+        <div class="est-text">EST.<br>1987</div>
+        <div class="hud-line-vert"></div>
+        <div class="social-links">
+          <a href="#" aria-label="X">X</a>
+          <a href="#" aria-label="Discord">Discord</a>
+          <a href="#" aria-label="Instagram">IG</a>
+          <a href="#" aria-label="Email">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="1.5"/>
+              <path d="M3.5 6.5l8.5 6 8.5-6"/>
+            </svg>
+          </a>
         </div>
-      </section>
+      </aside>
 
-      <footer class="hud-footer">
-        <div class="stat"><span class="stat-num">24</span> Active Players</div>
-        <div class="stat"><span class="stat-num">152</span> Matches Played</div>
-      </footer>
-    </main>
+      <div class="hero-panel ui-element">
+        <p class="eyebrow" id="intro-eyebrow">A campus tradition since 1987</p>
 
-    <canvas id="webgl"></canvas>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+        <h1 id="intro-headline">
+          FOSTERING<br>
+          <span class="text-cyan">STRATEGIC</span><br>
+          EXCELLENCE<span class="cursor">_</span>
+        </h1>
+
+        <hr class="panel-divider">
+
+        <p id="intro-body">
+          A place to learn the game properly, sharpen how you think under pressure,
+          and represent GBPUAT at tournaments across the country.
+        </p>
+
+        <div class="panel-footer">
+          <a href="#events" class="btn-terminal">Explore the club ↓</a>
+          <div class="watermark">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="2" x2="12" y2="6"/>
+              <line x1="10" y1="4" x2="14" y2="4"/>
+              <path d="M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1"/>
+              <path d="M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z"/>
+              <line x1="6.5" y1="18" x2="17.5" y2="18"/>
+            </svg>
+            <span>THINK • PLAN • WIN</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-bottom ui-element">
+        <div class="bottom-left">Connecting minds, elevating play.</div>
+      </div>
+    </section>
+
+    <!-- =========================== EVENTS ============================= -->
+    <section class="site-section" id="events">
+      <div class="section-inner">
+        <p class="section-eyebrow reveal"><span>01</span> What's on</p>
+        <h2 class="section-title reveal">Upcoming events</h2>
+        <p class="section-lede reveal">Tournaments, ladders, and casual meet-ups — pick one and jump in. No rating requirement to start.</p>
+        <div class="events-grid" id="eventsGrid"><!-- rendered by sections.js --></div>
+      </div>
+    </section>
+
+    <!-- ========================== STANDINGS ============================ -->
+    <section class="site-section" id="standings">
+      <div class="section-inner">
+        <p class="section-eyebrow reveal"><span>02</span> Standings</p>
+        <h2 class="section-title reveal">Club standings</h2>
+        <p class="section-lede reveal">Ratings update after every recorded game. Tap a player to see their form.</p>
+        <div id="standingsTable"><!-- rendered by sections.js --></div>
+      </div>
+    </section>
+
+    <!-- =========================== ARCHIVE ============================= -->
+    <section class="site-section" id="archive">
+      <div class="section-inner">
+        <p class="section-eyebrow reveal"><span>03</span> Games</p>
+        <h2 class="section-title reveal">From the archive</h2>
+        <p class="section-lede reveal">A running library of notable club games. Open one to step through the opening.</p>
+        <div id="archiveGrid"><!-- rendered by sections.js --></div>
+      </div>
+    </section>
+
+    <!-- =========================== CLUB / HONORS ======================= -->
+    <section class="site-section" id="honors">
+      <div class="section-inner">
+        <p class="section-eyebrow reveal"><span>04</span> Our story</p>
+        <h2 class="section-title reveal">Milestones</h2>
+        <p class="section-lede reveal">A few of the moments that shaped the club since 1987.</p>
+        <div id="honorsTimeline"><!-- rendered by sections.js --></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="logo-text">
+          <span>GBPUAT</span>
+          <span>CHESS CLUB</span>
+        </div>
+        <p>Connecting minds, elevating play since 1987.</p>
+      </div>
+      <nav class="footer-nav">
+        <a href="#events">Events</a>
+        <a href="#standings">Standings</a>
+        <a href="#archive">Games</a>
+        <a href="#honors">Club</a>
+      </nav>
+      <div class="footer-social">
+        <a href="#">X</a>
+        <a href="#">Discord</a>
+        <a href="#">Instagram</a>
+        <a href="#">Email</a>
+      </div>
+    </div>
+    <div class="footer-bottom">© 2026 GBPUAT Chess Club</div>
+  </footer>
+
+  <!-- Entry Script -->
+  <script type="module" src="/src/main.js"></script>
+</body>
 </html>
