@@ -4,13 +4,13 @@ export function initScene(callbacks = {}) {
   // ---------------------------------------------------------------
   // CONFIG & MODELS
   // ---------------------------------------------------------------
-  const MODELS = [
-    { url: 'src/assets/Pawn.stl',   scale: 1.0 },
-    { url: 'src/assets/Knight.stl', scale: 1.0 },
-    { url: 'src/assets/Bishop.stl', scale: 1.0 },
-    { url: 'src/assets/Rook.stl',   scale: 1.0 },
-    { url: 'src/assets/Queen.stl',  scale: 1.08 },
-    { url: 'src/assets/King.stl',   scale: 1.12 },
+ const MODELS = [
+    { url: `${import.meta.env.BASE_URL}models/Pawn.stl`,   scale: 1.0 },
+    { url: `${import.meta.env.BASE_URL}models/Knight.stl`, scale: 1.0 },
+    { url: `${import.meta.env.BASE_URL}models/Bishop.stl`, scale: 1.0 },
+    { url: `${import.meta.env.BASE_URL}models/Rook.stl`,   scale: 1.0 },
+    { url: `${import.meta.env.BASE_URL}models/Queen.stl`,  scale: 1.08 },
+    { url: `${import.meta.env.BASE_URL}models/King.stl`,   scale: 1.12 },
   ];
 
   const CONFIG = {
