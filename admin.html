@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Admin · GBPUAT Chess Club</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fe7ff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='24' height='24' rx='4' fill='%2304070d' stroke='none'/%3E%3Cpath d='M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1'/%3E%3Cpath d='M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+  <link rel="stylesheet" href="/src/app.css">
+</head>
+<body class="app">
+  <header class="site-header ui-element">
+    <a class="logo-group" href="./">
+      <div class="logo-shield" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="10" y1="4" x2="14" y2="4"/><path d="M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1"/><path d="M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z"/><line x1="6.5" y1="18" x2="17.5" y2="18"/></svg>
+      </div>
+      <div class="logo-text"><span>GBPUAT</span><span>CHESS CLUB</span></div>
+    </a>
+    <nav class="app-header-actions">
+      <span class="app-who" id="who"></span>
+      <a href="./">Site</a>
+      <a href="player.html">My Club</a>
+      <a href="admin.html" aria-current="page">Admin</a>
+      <button type="button" id="signOut">Sign out</button>
+    </nav>
+  </header>
+
+  <main class="app-main">
+    <div class="admin-layout">
+      <nav class="admin-nav" id="adminNav" aria-label="Admin sections"></nav>
+      <section id="adminView" aria-live="polite"><p class="empty">Loading…</p></section>
+    </div>
+  </main>
+
+  <dialog class="editor" id="editor"></dialog>
+
+  <script type="module" src="/src/admin.js"></script>
+</body>
+</html>

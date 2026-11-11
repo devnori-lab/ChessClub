@@ -1,16 +1,21 @@
 import * as THREE from 'three';
+import { loadPiece, decodeGzipMesh } from './meshLoader.js';
+import { computeMeshArrays, computePointArrays } from './pieceGeometry.js';
 
 export function initScene(callbacks = {}) {
   // ---------------------------------------------------------------
   // CONFIG & MODELS
   // ---------------------------------------------------------------
- const MODELS = [
-    { url: `${import.meta.env.BASE_URL}models/Pawn.stl`,   scale: 1.0 },
-    { url: `${import.meta.env.BASE_URL}models/Knight.stl`, scale: 1.0 },
-    { url: `${import.meta.env.BASE_URL}models/Bishop.stl`, scale: 1.0 },
-    { url: `${import.meta.env.BASE_URL}models/Rook.stl`,   scale: 1.0 },
-    { url: `${import.meta.env.BASE_URL}models/Queen.stl`,  scale: 1.08 },
-    { url: `${import.meta.env.BASE_URL}models/King.stl`,   scale: 1.12 },
+  // `url` has no extension: meshLoader fetches the compact .mesh build
+  // (scripts/build-models.mjs) and falls back to the .stl if needed.
+  // Order matters — pieces appear in exactly this sequence.
+  const MODELS = [
+    { name: 'Pawn',   url: `${import.meta.env.BASE_URL}models/Pawn`,   scale: 1.0 },
+    { name: 'Knight', url: `${import.meta.env.BASE_URL}models/Knight`, scale: 1.0 },
+    { name: 'Bishop', url: `${import.meta.env.BASE_URL}models/Bishop`, scale: 1.0 },
+    { name: 'Rook',   url: `${import.meta.env.BASE_URL}models/Rook`,   scale: 1.0 },
+    { name: 'Queen',  url: `${import.meta.env.BASE_URL}models/Queen`,  scale: 1.08 },
+    { name: 'King',   url: `${import.meta.env.BASE_URL}models/King`,   scale: 1.12 },
   ];
 
   const CONFIG = {
@@ -33,6 +38,18 @@ export function initScene(callbacks = {}) {
     holdMs: 1300,
     turnDurationMs: 1500,
     dematerializeDurationMs: 1100,
+
+    // Scroll pose: how quickly the rendered pose chases the scroll position
+    // (higher = snappier). Wheel ticks get smoothed into a glide.
+    scrollDamping: 7,
+
+    // "Covered" mode — the frosted sections hide the piece completely, so
+    // the real 270k-triangle mesh is swapped for the grid's cheap glow
+    // stand-in, the canvas renders at reduced resolution and frame rate,
+    // and the grid glows brighter so it still reads through the blur.
+    coveredPixelRatio: 0.5,
+    coveredFps: 30,
+    coveredGlowBoost: 1.0,
   };
 
   // ---------------------------------------------------------------
@@ -76,6 +93,7 @@ export function initScene(callbacks = {}) {
     uniform float uTime;
     uniform vec3 uBaseColor;
     uniform vec3 uGlowColor;
+    uniform float uOpacity;
 
     float edgeFactor(vec3 bary){
       vec3 d = fwidth(bary);
@@ -108,6 +126,7 @@ export function initScene(callbacks = {}) {
       vec3 finalColor = mix(unbuiltColor, builtColor, vReveal);
       float alpha = mix(edge * (0.30 + flicker * 0.25), 1.0, vReveal);
 
+      alpha *= uOpacity;
       if (alpha < 0.01) discard;
       gl_FragColor = vec4(finalColor, alpha);
     }
@@ -135,35 +154,89 @@ export function initScene(callbacks = {}) {
   const pointFragmentShader = `
     varying float vAlpha;
     uniform vec3 uGlowColor;
+    uniform float uOpacity;
     void main(){
       if (vAlpha <= 0.02) discard;
       float d = length(gl_PointCoord - vec2(0.5));
       float a = smoothstep(0.5, 0.0, d) * vAlpha;
-      gl_FragColor = vec4(uGlowColor, a * 0.85);
+      gl_FragColor = vec4(uGlowColor, a * 0.85 * uOpacity);
     }
   `;
 
+  // Ground grid: drawn procedurally on one quad instead of as 1px line
+  // segments, which lets every line carry a soft glow halo. Same layout as
+  // before — 14 rings at radius 22·(k/14)^1.6 and 24 spokes — and the same
+  // reveal / explode-front / far-fade terms, so the timing is unchanged.
+  // uCore paints a cheap stand-in for the piece (seen face-on, behind the
+  // frosted sections) that breathes with the build/dematerialize cycle.
   const groundVertexShader = `
-    attribute float aDist;
-    varying float vDist;
+    varying vec2 vP;
     void main(){
-      vDist = aDist;
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      gl_Position = projectionMatrix * mv;
+      vP = position.xy;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
   `;
 
   const groundFragmentShader = `
-    varying float vDist;
+    varying vec2 vP;
     uniform float uExplode;
+    uniform float uGlow;
+    uniform float uCore;
+    uniform float uIdlePulse;
+    uniform float uProgress;
+    uniform float uTime;
     uniform vec3 uGlowColor;
+
+    const float MAX_R = 22.0;
+    const float RINGS = 14.0;
+    const float SPOKES = 24.0;
+    const float TAU = 6.2831853;
+
+    float ringRadius(float k){ return MAX_R * pow(clamp(k, 1.0, RINGS) / RINGS, 1.6); }
+
     void main(){
-      float reveal = smoothstep(vDist - 0.06, vDist, uExplode);
-      float front = 1.0 - clamp(abs(vDist - uExplode) / 0.05, 0.0, 1.0);
-      float farFade = 1.0 - smoothstep(0.12, 0.42, vDist);
-      float alpha = reveal * farFade * (0.16 + front * 1.5);
-      if (alpha < 0.01) discard;
-      gl_FragColor = vec4(uGlowColor, alpha);
+      float r = length(vP);
+      float dist = r / MAX_R;
+      float px = max(length(fwidth(vP)) * 0.7071, 1e-5); // world units per pixel
+
+      // nearest ring
+      float t = pow(dist, 1.0 / 1.6) * RINGS;
+      float dR = min(abs(r - ringRadius(floor(t))), abs(r - ringRadius(ceil(t)))) / px;
+      // nearest spoke
+      float sector = TAU / SPOKES;
+      float da = mod(atan(vP.y, vP.x) + sector * 0.5, sector) - sector * 0.5;
+      float dS = r * abs(sin(da)) / px;
+
+      float d = min(dR, dS);
+      float core = 1.0 - smoothstep(0.0, 1.1, d);
+      float halo = exp(-dR / 7.0) + exp(-dS / 7.0) * 0.8;
+
+      float reveal = smoothstep(dist - 0.06, dist, uExplode);
+      float front = 1.0 - clamp(abs(dist - uExplode) / 0.05, 0.0, 1.0);
+      float farFade = 1.0 - smoothstep(0.12, 0.42, dist);
+
+      // Idle ripple: while the grid rests fully revealed (between the build
+      // and dematerialize pulses), a faint ring drifts out every few seconds.
+      float idle = smoothstep(0.85, 1.0, uExplode) * uIdlePulse;
+      float rp = fract(uTime / 3.4);
+      float ripple = idle * (1.0 - rp) * exp(-pow((dist - rp * 0.46) / 0.022, 2.0));
+
+      // The halo is strong only on the moving pulses; at rest it's a dim hint.
+      float energy = max(front, ripple * 0.7);
+      float haloW = mix(0.10, 0.55, energy) * uGlow;
+      float lineA = reveal * farFade * (0.12 + front * 1.5 + ripple * 0.45);
+      float alpha = lineA * (core + halo * haloW);
+      // soft shock-wave sweeping out with the explode front (and ripple)
+      alpha += (front * front * 0.10 + ripple * ripple * 0.035) * farFade * uGlow;
+
+      // face-on stand-in for the piece while it's hidden under the glass
+      float build = clamp(uProgress, 0.0, 1.0);
+      float pulse = 0.85 + 0.15 * sin(uTime * 2.3);
+      float disc = exp(-r * r / 0.55) * 0.75 + exp(-pow((r - 0.62) / 0.09, 2.0)) * 0.45;
+      alpha += uCore * build * pulse * disc;
+
+      if (alpha < 0.004) discard;
+      gl_FragColor = vec4(uGlowColor, min(alpha, 1.0));
     }
   `;
 
@@ -172,7 +245,8 @@ export function initScene(callbacks = {}) {
   // ---------------------------------------------------------------
   const stage = document.getElementById('stage');
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const fullPixelRatio = () => Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(fullPixelRatio());
   stage.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -180,169 +254,28 @@ export function initScene(callbacks = {}) {
   camera.position.set(0, 2.35, 6.2);
   camera.lookAt(0, 1.3, 0);
 
-  function hash(n) {
-    const x = Math.sin(n * 127.1) * 43758.5453;
-    return x - Math.floor(x);
-  }
-
   // ---------------------------------------------------------------
-  // STL PARSING & GEOMETRY
+  // GEOMETRY (typed-array prep lives in pieceGeometry.js so the worker
+  // can run it; these wrap the arrays into BufferGeometries)
   // ---------------------------------------------------------------
-  function parseSTL(buffer) {
-    const view = new DataView(buffer);
-    if (buffer.byteLength > 84) {
-      const triCount = view.getUint32(80, true);
-      if (84 + triCount * 50 === buffer.byteLength) {
-        const positions = new Float32Array(triCount * 9);
-        const normals = new Float32Array(triCount * 9);
-        let offset = 84;
-        for (let i = 0; i < triCount; i++) {
-          const nx = view.getFloat32(offset, true), ny = view.getFloat32(offset + 4, true), nz = view.getFloat32(offset + 8, true);
-          offset += 12;
-          for (let v = 0; v < 3; v++) {
-            const x = view.getFloat32(offset, true), y = view.getFloat32(offset + 4, true), z = view.getFloat32(offset + 8, true);
-            offset += 12;
-            const idx = (i * 3 + v) * 3;
-            positions[idx] = x; positions[idx+1] = y; positions[idx+2] = z;
-            normals[idx] = nx; normals[idx+1] = ny; normals[idx+2] = nz;
-          }
-          offset += 2;
-        }
-        return { positions, normals };
-      }
-    }
-    const text = new TextDecoder().decode(buffer);
-    const chunks = text.split(/facet\s+normal/i).slice(1);
-    const positions = [], normals = [];
-    const numRe = /-?\d+\.?\d*(?:[eE][-+]?\d+)?/g;
-    for (const chunk of chunks) {
-      const nums = chunk.match(numRe);
-      if (!nums || nums.length < 12) continue;
-      const nx = +nums[0], ny = +nums[1], nz = +nums[2];
-      for (let v = 0; v < 3; v++) {
-        const base = 3 + v * 3;
-        positions.push(+nums[base], +nums[base+1], +nums[base+2]);
-        normals.push(nx, ny, nz);
-      }
-    }
-    return { positions: new Float32Array(positions), normals: new Float32Array(normals) };
+  function toGeometry(arrays, itemSizes) {
+    const geo = new THREE.BufferGeometry();
+    for (const k in itemSizes) geo.setAttribute(k, new THREE.BufferAttribute(arrays[k], itemSizes[k]));
+    return geo;
   }
-
-  function applyRotationFix(positions, normals, fixDeg) {
-    if (!fixDeg || (!fixDeg.x && !fixDeg.y && !fixDeg.z)) return { positions, normals };
-    const euler = new THREE.Euler(
-      THREE.MathUtils.degToRad(fixDeg.x || 0),
-      THREE.MathUtils.degToRad(fixDeg.y || 0),
-      THREE.MathUtils.degToRad(fixDeg.z || 0),
-      'XYZ'
-    );
-    const quat = new THREE.Quaternion().setFromEuler(euler);
-    const v = new THREE.Vector3();
-    const outPos = new Float32Array(positions.length);
-    const outNorm = new Float32Array(normals.length);
-    for (let i = 0; i < positions.length; i += 3) {
-      v.set(positions[i], positions[i+1], positions[i+2]).applyQuaternion(quat);
-      outPos[i]=v.x; outPos[i+1]=v.y; outPos[i+2]=v.z;
-      v.set(normals[i], normals[i+1], normals[i+2]).applyQuaternion(quat);
-      outNorm[i]=v.x; outNorm[i+1]=v.y; outNorm[i+2]=v.z;
-    }
-    return { positions: outPos, normals: outNorm };
-  }
+  const MESH_ATTRS = { position: 3, normal: 3, aBary: 3, aSeed: 1 };
+  const POINT_ATTRS = { position: 3, aSeed: 1, aOffset: 3, aRand: 1 };
 
   function buildGeometry(rawPositions, rawNormals, rotationFix) {
-    const { positions, normals } = applyRotationFix(rawPositions, rawNormals, rotationFix);
-    const triCount = positions.length / 9;
-    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
-    
-    for (let i = 0; i < positions.length; i += 3) {
-      const x=positions[i], y=positions[i+1], z=positions[i+2];
-      if (x<minX) minX=x; if (x>maxX) maxX=x;
-      if (y<minY) minY=y; if (y>maxY) maxY=y;
-      if (z<minZ) minZ=z; if (z>maxZ) maxZ=z;
-    }
-    
-    const cx=(minX+maxX)/2, cz=(minZ+maxZ)/2, baseY=minY;
-    const sizeY = Math.max(maxY-minY, 1e-5);
-    const scale = CONFIG.targetHeight / sizeY;
-
-    const pos = new Float32Array(positions.length);
-    const norm = new Float32Array(positions.length);
-    const bary = new Float32Array(positions.length);
-    const seed = new Float32Array(positions.length / 3);
-    const baryPatterns = [[1,0,0],[0,1,0],[0,0,1]];
-
-    for (let t = 0; t < triCount; t++) {
-      const rnd = hash(t);
-      let sumY = 0;
-      for (let v = 0; v < 3; v++) {
-        const si = (t*3+v)*3;
-        const x=(positions[si]-cx)*scale, y=(positions[si+1]-baseY)*scale, z=(positions[si+2]-cz)*scale;
-        pos[si]=x; pos[si+1]=y; pos[si+2]=z;
-        norm[si]=normals[si]; norm[si+1]=normals[si+1]; norm[si+2]=normals[si+2];
-        const bp = baryPatterns[v];
-        bary[si]=bp[0]; bary[si+1]=bp[1]; bary[si+2]=bp[2];
-        sumY += y;
-      }
-      const avgYNorm = (sumY/3) / CONFIG.targetHeight;
-      const s = Math.min(1, Math.max(0, avgYNorm*0.7 + rnd*0.3));
-      seed[t*3]=s; seed[t*3+1]=s; seed[t*3+2]=s;
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
-    geo.setAttribute('aBary', new THREE.BufferAttribute(bary, 3));
-    geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
-    return geo;
+    return computeMeshArrays(rawPositions, rawNormals, rotationFix, CONFIG.targetHeight);
   }
 
   const MAX_POINTS = 3200;
-  function buildPointsGeometry(meshGeo, maxPoints) {
-    const pos = meshGeo.getAttribute('position');
-    const seed = meshGeo.getAttribute('aSeed');
-    const vertCount = pos.count;
-    const stride = Math.max(1, Math.ceil(vertCount / maxPoints));
-    const outPos = [], outSeed = [], outOffset = [], outRand = [];
-    
-    for (let i = 0; i < vertCount; i += stride) {
-      outPos.push(pos.getX(i), pos.getY(i), pos.getZ(i));
-      outSeed.push(seed.getX(i));
-      const r1 = hash(i*1.37+1.0), r2 = hash(i*2.19+4.0), r3 = hash(i*3.71+7.0);
-      const mag = 0.10 + hash(i*5.13+2.0) * 0.22;
-      outOffset.push((r1-0.5)*2*mag, (r2-0.5)*2*mag, (r3-0.5)*2*mag);
-      outRand.push(hash(i*7.77+3.0));
-    }
-    
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(outPos), 3));
-    geo.setAttribute('aSeed', new THREE.BufferAttribute(new Float32Array(outSeed), 1));
-    geo.setAttribute('aOffset', new THREE.BufferAttribute(new Float32Array(outOffset), 3));
-    geo.setAttribute('aRand', new THREE.BufferAttribute(new Float32Array(outRand), 1));
-    return geo;
-  }
 
   function buildGroundGeometry() {
-    const maxRadius = 22, ringCount = 14, segs = 56, spokes = 24;
-    const positions = [], dist = [];
-    for (let r = 1; r <= ringCount; r++) {
-      const t = r / ringCount;
-      const rad = maxRadius * Math.pow(t, 1.6);
-      const d = rad / maxRadius;
-      for (let s = 0; s < segs; s++) {
-        const a0 = (s / segs) * Math.PI * 2, a1 = ((s+1) / segs) * Math.PI * 2;
-        positions.push(Math.cos(a0)*rad, 0, Math.sin(a0)*rad, Math.cos(a1)*rad, 0, Math.sin(a1)*rad);
-        dist.push(d, d);
-      }
-    }
-    for (let s = 0; s < spokes; s++) {
-      const a = (s / spokes) * Math.PI * 2;
-      positions.push(0,0,0, Math.cos(a)*maxRadius, 0, Math.sin(a)*maxRadius);
-      dist.push(0, 1);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-    geo.setAttribute('aDist', new THREE.BufferAttribute(new Float32Array(dist), 1));
-    return geo;
+    // A quad in its own XY plane (the shader's polar input), laid flat by
+    // the mesh rotation below. Covers out to the far-fade cutoff (≈ 9.3).
+    return new THREE.PlaneGeometry(19.2, 19.2);
   }
 
   function buildDefaultPawn() {
@@ -363,6 +296,14 @@ export function initScene(callbacks = {}) {
     return buildGeometry(new Float32Array(pos), new Float32Array(norm), null);
   }
 
+  function makeEntry(meshArrays, pointArrays, scale) {
+    return {
+      geo: toGeometry(meshArrays, MESH_ATTRS),
+      pGeo: toGeometry(pointArrays || computePointArrays(meshArrays, MAX_POINTS), POINT_ATTRS),
+      scale,
+    };
+  }
+
   // ---------------------------------------------------------------
   // MATERIALS & SCENE GRAPH
   // ---------------------------------------------------------------
@@ -371,6 +312,7 @@ export function initScene(callbacks = {}) {
     uTime: { value: 0 },
     uBaseColor: { value: new THREE.Color(CONFIG.baseColor) },
     uGlowColor: { value: new THREE.Color(CONFIG.accentColor) },
+    uOpacity: { value: 1 },
   };
 
   const material = new THREE.ShaderMaterial({
@@ -383,6 +325,7 @@ export function initScene(callbacks = {}) {
     uProgress: uniforms.uProgress,
     uTime: uniforms.uTime,
     uGlowColor: uniforms.uGlowColor,
+    uOpacity: uniforms.uOpacity,
   };
 
   const pointMaterial = new THREE.ShaderMaterial({
@@ -393,49 +336,63 @@ export function initScene(callbacks = {}) {
 
   const groundUniforms = {
     uExplode: { value: 0 },
+    uGlow: { value: 1 },
+    uCore: { value: 0 },
+    uIdlePulse: { value: 1 },
+    uProgress: uniforms.uProgress,
+    uTime: uniforms.uTime,
     uGlowColor: uniforms.uGlowColor,
   };
 
   const groundMaterial = new THREE.ShaderMaterial({
     vertexShader: groundVertexShader, fragmentShader: groundFragmentShader,
     uniforms: groundUniforms, transparent: true, depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
   });
+  groundMaterial.extensions = { derivatives: true };
 
   const group = new THREE.Group();
   const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
   const points = new THREE.Points(new THREE.BufferGeometry(), pointMaterial);
-  const ground = new THREE.LineSegments(buildGroundGeometry(), groundMaterial);
+  // The quad's geometry is in its own XY; rotate it flat into XZ.
+  const ground = new THREE.Mesh(buildGroundGeometry(), groundMaterial);
+  ground.rotation.x = Math.PI / 2;
   ground.position.y = 0.01;
 
   group.add(mesh, points, ground);
   scene.add(group);
 
   function setGeometry(geo, pGeo) {
-    mesh.geometry.dispose();
-    points.geometry.dispose();
+    // Cached geometries are reused every cycle, so they are not disposed
+    // here (the GPU buffers simply stay resident — six pieces).
     mesh.geometry = geo;
-    points.geometry = pGeo || buildPointsGeometry(geo, MAX_POINTS);
+    points.geometry = pGeo;
   }
 
   // ---------------------------------------------------------------
   // PRELOAD & ANIMATION STATE
   // ---------------------------------------------------------------
-  let modelsCache = [];
+  // One slot per MODELS entry, filled progressively:
+  //   undefined = still loading, null = failed (skipped), object = ready.
+  const modelsCache = new Array(MODELS.length);
   let modelIndex = 0;
+  let nextModelIndex = 0;
   let currentModelScale = 1;
   let hasDocked = false;
   let ready = false;
   let phase = 'loading';
   let phaseStart = performance.now();
 
+  // The intro/dock animation writes the piece's "base" position here; the
+  // scroll pose then blends it toward screen-centre (see applyScrollPose).
+  const basePos = new THREE.Vector3();
   let dockFromX = 0, dockToX = 0;
   let dockFromY = 0, dockToY = 0;
   let dockFromScale = 1, dockToScale = 0.56;
   let turnFromY = 0, turnToY = Math.PI / 2;
 
   function worldXForFrac(frac) {
-    const camDist = camera.position.z - group.position.z;
+    const camDist = camera.position.z - basePos.z;
     const vFOV = camera.fov * Math.PI / 180;
     const halfHeight = Math.tan(vFOV/2) * camDist;
     const halfWidth = halfHeight * camera.aspect;
@@ -457,8 +414,10 @@ export function initScene(callbacks = {}) {
     }
   }
 
+  let lowPower = false;
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
+    renderer.setPixelRatio(lowPower ? CONFIG.coveredPixelRatio : fullPixelRatio());
     renderer.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -466,8 +425,8 @@ export function initScene(callbacks = {}) {
     
     // Auto-adjust live positions if resized AFTER docking has completed
     if (hasDocked && phase !== 'dock') {
-      group.position.x = dockToX;
-      group.position.y = dockToY;
+      basePos.x = dockToX;
+      basePos.y = dockToY;
       group.scale.setScalar(dockToScale);
     }
   }
@@ -475,52 +434,210 @@ export function initScene(callbacks = {}) {
   window.addEventListener('resize', resize);
   resize();
 
-  async function preload() {
-    const results = await Promise.all(MODELS.map(async (m) => {
-      try {
-        const res = await fetch(m.url);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const buf = await res.arrayBuffer();
-        const { positions, normals } = parseSTL(buf);
-        if (!positions.length) throw new Error('empty/unparsable STL');
-        const rot = m.rotationFix || CONFIG.defaultRotationFix;
-        const geo = buildGeometry(positions, normals, rot);
-        return { geo, pGeo: buildPointsGeometry(geo, MAX_POINTS), scale: (m.scale != null ? m.scale : 1) };
-      } catch (err) {
-        console.error('[chess-pieces] failed to load', m.url, err);
-        return null;
-      }
-    }));
+  // Pieces load strictly one after another, in display order, so the
+  // first one (the pawn) gets the whole connection and the show can start
+  // as soon as it lands; the rest stream in behind the running animation.
+  // Fetch + decode + geometry prep run in a worker so the animation never
+  // hitches; if workers are unavailable it all runs on the main thread.
+  let worker = null;
+  try {
+    worker = new Worker(new URL('./pieceWorker.js', import.meta.url), { type: 'module' });
+  } catch (err) {
+    worker = null;
+  }
 
-    modelsCache = results.filter(Boolean);
-    if (modelsCache.length === 0) {
-      const geo = buildDefaultPawn();
-      modelsCache = [{ geo, pGeo: buildPointsGeometry(geo, MAX_POINTS), scale: 1 }];
+  // index.html starts downloading the pawn from an inline <script> in
+  // <head>, in parallel with the JS bundle. Use those bytes if available.
+  async function takePrefetch(i, onProgress) {
+    const pf = window.__pawnPrefetch;
+    if (i !== 0 || !pf || !pf.promise) return null;
+    pf.listeners.push(onProgress);
+    onProgress(pf.progress);
+    try { return await pf.promise; }
+    catch (err) { return null; }
+    finally { window.__pawnPrefetch = null; }
+  }
+
+  function loadInWorker(i, onProgress, buffer) {
+    return new Promise((resolve, reject) => {
+      const m = MODELS[i];
+      const onMessage = (e) => {
+        const d = e.data;
+        if (d.id !== i) return;
+        if (d.type === 'progress') { onProgress(d.progress); return; }
+        worker.removeEventListener('message', onMessage);
+        worker.removeEventListener('error', onError);
+        if (d.type === 'done') resolve(makeEntry(d.mesh, d.points, m.scale != null ? m.scale : 1));
+        else reject(new Error(d.message));
+      };
+      const onError = (e) => {
+        worker.removeEventListener('message', onMessage);
+        worker.removeEventListener('error', onError);
+        reject(e.error || new Error(e.message || 'worker error'));
+      };
+      worker.addEventListener('message', onMessage);
+      worker.addEventListener('error', onError);
+      worker.postMessage({
+        id: i, url: new URL(m.url, location.href).href, buffer,
+        rotationFix: m.rotationFix || CONFIG.defaultRotationFix,
+        targetHeight: CONFIG.targetHeight, maxPoints: MAX_POINTS,
+      }, buffer ? [buffer] : []);
+    });
+  }
+
+  async function loadOnMainThread(i, onProgress, buffer) {
+    const m = MODELS[i];
+    const { positions, normals } = buffer ? await decodeGzipMesh(buffer) : await loadPiece(m.url, onProgress);
+    if (!positions.length) throw new Error('empty/unparsable model');
+    const arrays = buildGeometry(positions, normals, m.rotationFix || CONFIG.defaultRotationFix);
+    return makeEntry(arrays, null, m.scale != null ? m.scale : 1);
+  }
+
+  async function loadOne(i, onProgress) {
+    try {
+      const buffer = await takePrefetch(i, onProgress);
+      if (buffer) onProgress(1);
+      if (worker) {
+        // A transferred buffer is detached, so a retry would refetch.
+        try { return await loadInWorker(i, onProgress, buffer); }
+        catch (err) {
+          console.warn('[chess-pieces] worker load failed, retrying on main thread', MODELS[i].url, err);
+          worker.terminate(); worker = null;
+        }
+      }
+      return await loadOnMainThread(i, onProgress, buffer && buffer.byteLength ? buffer : null);
+    } catch (err) {
+      console.error('[chess-pieces] failed to load', MODELS[i].url, err);
+      return null;
+    }
+  }
+
+  function start(i) {
+    modelIndex = i;
+    nextModelIndex = i;
+    const first = modelsCache[i];
+    currentModelScale = first.scale;
+    setGeometry(first.geo, first.pGeo);
+    computeDockTarget();
+    if (callbacks.skipIntro) {
+      // Returning visitor: skip the centre build + dock and start the
+      // regular cycle already in the docked pose (exactly how every later
+      // piece builds), so the Pawn → King sequence is unchanged.
+      basePos.set(dockToX, dockToY, 0);
+      group.scale.setScalar(dockToScale);
+      hasDocked = true;
+      dockAnnounced = true;
+    } else {
+      group.scale.setScalar(CONFIG.centerScale * currentModelScale);
     }
 
-    currentModelScale = modelsCache[0].scale;
-    setGeometry(modelsCache[0].geo, modelsCache[0].pGeo);
-    group.scale.setScalar(CONFIG.centerScale * currentModelScale);
-    
     ready = true;
     phase = 'build';
     phaseStart = performance.now();
+    if (callbacks.onFirstReady) callbacks.onFirstReady();
+  }
+
+  function report(i, stage, progress) {
+    if (!callbacks.onLoadProgress) return;
+    callbacks.onLoadProgress({
+      index: i, name: MODELS[i].name, stage, progress,
+      total: MODELS.length,
+      loaded: modelsCache.filter(Boolean).length,
+      settled: modelsCache.filter((s) => s !== undefined).length,
+    });
+  }
+
+  async function preload() {
+    for (let i = 0; i < MODELS.length; i++) {
+      report(i, 'fetch', 0);
+      const entry = await loadOne(i, (p) => report(i, p >= 1 ? 'decode' : 'fetch', p));
+      modelsCache[i] = entry;
+      report(i, entry ? 'ready' : 'failed', 1);
+      if (entry && !ready) start(i);
+    }
+    if (worker) { worker.terminate(); worker = null; }
+
+    if (!ready) {
+      // Nothing loaded at all — fall back to a procedural pawn.
+      modelsCache[0] = makeEntry(buildDefaultPawn(), null, 1);
+      start(0);
+    }
+  }
+
+  // Next piece in display order, skipping failures. Returns -1 while that
+  // piece is still loading: the current one simply holds a little longer,
+  // so the sequence is never reordered or skipped on a slow connection.
+  function peekNextModel() {
+    for (let k = 1; k <= MODELS.length; k++) {
+      const i = (modelIndex + k) % MODELS.length;
+      const slot = modelsCache[i];
+      if (slot === null) continue;
+      return slot === undefined ? -1 : i;
+    }
+    return modelIndex;
+  }
+
+  // ---------------------------------------------------------------
+  // SCROLL POSE
+  // 0 = docked hero pose, 1 = centred on screen with the grid parallel
+  // to the screen and the piece pointing straight out at the viewer.
+  // ---------------------------------------------------------------
+  let scrollTarget = 0;
+  let scrollSmooth = 0;
+  let lastScrollReported = -1;
+  const centerPos = new THREE.Vector3(0, 1.3, 0); // camera.lookAt target = screen centre
+  // Tilt (about X) that turns the piece's +Y axis to face the camera:
+  // R_x(t)·(0,1,0) = (0, cos t, sin t) ∥ (camera.position − target).
+  const faceTilt = Math.atan2(camera.position.z - centerPos.z, camera.position.y - centerPos.y);
+
+  function applyScrollPose(dt) {
+    const k = reduceMotion ? 1 : 1 - Math.exp(-dt * CONFIG.scrollDamping);
+    scrollSmooth += (scrollTarget - scrollSmooth) * k;
+    if (Math.abs(scrollTarget - scrollSmooth) < 1e-4) scrollSmooth = scrollTarget;
+
+    const e = easeInOutCubic(scrollSmooth);
+    group.position.lerpVectors(basePos, centerPos, e);
+    // Euler 'XYZ' applies the animation's Y spin in the piece's own frame
+    // first, then this tilt — so turns keep working once it faces you.
+    group.rotation.x = faceTilt * e;
+
+    if (callbacks.onScrollProgress && scrollSmooth !== lastScrollReported) {
+      lastScrollReported = scrollSmooth;
+      callbacks.onScrollProgress(scrollSmooth);
+    }
   }
 
   // ---------------------------------------------------------------
   // RENDER LOOP
   // ---------------------------------------------------------------
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion) groundUniforms.uIdlePulse.value = 0;
   const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
   const easeOutQuint = t => 1 - Math.pow(1 - t, 5);
   const easeInOutCubic = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
 
   const glowBackdrop = document.getElementById('glow-backdrop');
   const projected = new THREE.Vector3();
+  let lastNow = performance.now();
+  let dockAnnounced = false;
+
+  // 0 = piece fully visible, 1 = fully under the glass (fake stand-in).
+  let cover = 0;
+  function applyCover() {
+    uniforms.uOpacity.value = 1 - cover;
+    groundUniforms.uCore.value = cover;
+    groundUniforms.uGlow.value = 1 + cover * CONFIG.coveredGlowBoost;
+    mesh.visible = points.visible = cover < 1;
+  }
 
   function tick(now) {
     requestAnimationFrame(tick);
+    // Under the glass nobody can see 60 fps; the state machine is
+    // time-based, so skipped frames don't alter the piece timing.
+    if (lowPower && now - lastNow < 1000 / CONFIG.coveredFps - 2) return;
     uniforms.uTime.value = now * 0.001;
+    const dt = Math.min(0.1, Math.max(0, (now - lastNow) / 1000));
+    lastNow = now;
 
     if (!ready) { renderer.render(scene, camera); return; }
 
@@ -529,10 +646,11 @@ export function initScene(callbacks = {}) {
     if (reduceMotion) {
       uniforms.uProgress.value = 1.15;
       groundUniforms.uExplode.value = 1;
-      group.position.x = dockToX;
-      group.position.y = dockToY;
+      basePos.x = dockToX;
+      basePos.y = dockToY;
       group.scale.setScalar(dockToScale);
-      if (callbacks.onDock) callbacks.onDock();
+      hasDocked = true;
+      if (!dockAnnounced) { dockAnnounced = true; if (callbacks.onDock) callbacks.onDock(); }
       phase = 'static';
     } 
     else if (phase === 'build') {
@@ -547,12 +665,15 @@ export function initScene(callbacks = {}) {
         group.rotation.y += 0.006;
         if (elapsed >= CONFIG.introHoldMs) {
           phase = 'dock'; phaseStart = now;
-          dockFromX = group.position.x; 
-          dockFromY = group.position.y;
+          dockFromX = basePos.x;
+          dockFromY = basePos.y;
           dockFromScale = group.scale.x;
         }
       } else {
-        if (elapsed >= CONFIG.holdMs) {
+        // Hold until the next piece in the sequence has finished loading.
+        const next = elapsed >= CONFIG.holdMs ? peekNextModel() : -1;
+        if (next !== -1) {
+          nextModelIndex = next;
           phase = 'turn'; phaseStart = now;
           turnFromY = group.rotation.y;
           turnToY = turnFromY + Math.PI / 2;
@@ -564,13 +685,14 @@ export function initScene(callbacks = {}) {
       const e = easeInOutCubic(p);
       
       // Interpolate both X (desktop) and Y (mobile) simultaneously
-      group.position.x = dockFromX + (dockToX - dockFromX) * e;
-      group.position.y = dockFromY + (dockToY - dockFromY) * e;
+      basePos.x = dockFromX + (dockToX - dockFromX) * e;
+      basePos.y = dockFromY + (dockToY - dockFromY) * e;
       group.scale.setScalar(dockFromScale + (dockToScale - dockFromScale) * e);
       group.rotation.y += 0.006 * (1 - e * 0.8);
       
       if (p >= 1) {
         hasDocked = true;
+        dockAnnounced = true;
         if (callbacks.onDock) callbacks.onDock();
         phase = 'hold'; 
         phaseStart = now;
@@ -589,7 +711,7 @@ export function initScene(callbacks = {}) {
       groundUniforms.uExplode.value = 1 - e;
       
       if (p >= 1) {
-        modelIndex = (modelIndex + 1) % modelsCache.length;
+        modelIndex = nextModelIndex;
         const next = modelsCache[modelIndex];
         currentModelScale = next.scale;
         setGeometry(next.geo, next.pGeo);
@@ -604,8 +726,13 @@ export function initScene(callbacks = {}) {
       }
     }
 
-    // Dynamic Glow Tracker
-    projected.copy(group.position).setY(group.position.y + CONFIG.targetHeight * 0.55 * group.scale.y);
+    applyScrollPose(dt);
+
+    // Dynamic Glow Tracker — follows the piece's own axis, so it stays on
+    // the piece as the scroll pose tilts it toward the viewer.
+    group.updateMatrixWorld();
+    projected.set(0, CONFIG.targetHeight * 0.55, 0);
+    group.localToWorld(projected);
     projected.project(camera);
     const sx = (projected.x * 0.5 + 0.5) * window.innerWidth;
     const sy = (-projected.y * 0.5 + 0.5) * window.innerHeight;
@@ -621,4 +748,21 @@ export function initScene(callbacks = {}) {
   // Boot
   preload();
   requestAnimationFrame(tick);
+
+  return {
+    /** Raw scroll progress through the hero, 0..1 (smoothed internally). */
+    setScrollProgress(p) {
+      scrollTarget = Math.min(1, Math.max(0, p || 0));
+    },
+    /**
+     * How much of the piece the frosted UI covers (0..1), and whether the
+     * whole viewport is behind glass (enables reduced resolution / fps).
+     */
+    setCover(amount, fullyCovered) {
+      const c = Math.min(1, Math.max(0, amount || 0));
+      if (c !== cover) { cover = c; applyCover(); }
+      const lp = !!fullyCovered && cover >= 1;
+      if (lp !== lowPower) { lowPower = lp; resize(); }
+    },
+  };
 }

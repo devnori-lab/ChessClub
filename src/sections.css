@@ -86,7 +86,11 @@ body.nav-locked { overflow: hidden; }
 
 .site-section {
   position: relative;
-  background: var(--bg);
+  /* Translucent glass over the fixed 3D stage: the centred, face-on piece
+     keeps glowing through every section as you read. */
+  background: rgba(4, 7, 13, 0.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  backdrop-filter: blur(16px) saturate(1.15);
   padding: clamp(4.5rem, 10vw, 7.5rem) clamp(1.5rem, 6vw, 4rem);
   border-top: 1px solid rgba(150, 215, 255, 0.08);
 }
@@ -132,6 +136,12 @@ body.nav-locked { overflow: hidden; }
   color: var(--text-muted);
   max-width: 640px;
   margin: 0 0 3.25rem;
+}
+
+/* Without backdrop-filter, fall back to near-opaque panels for legibility. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .site-section { background: rgba(4, 7, 13, 0.88); }
+  .site-footer { background: rgba(2, 4, 10, 0.94); }
 }
 
 /* =======================================================================
@@ -441,7 +451,9 @@ body.nav-locked { overflow: hidden; }
 .site-footer {
   position: relative;
   z-index: 5;
-  background: #02040a;
+  background: rgba(2, 4, 10, 0.7);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  backdrop-filter: blur(18px) saturate(1.1);
   border-top: 1px solid rgba(150, 215, 255, 0.1);
   padding: 3.25rem clamp(1.5rem, 6vw, 4rem) 2rem;
 }

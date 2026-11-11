@@ -1,9 +1,125 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="is-locked">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GBPUAT Chess Club</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fe7ff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='24' height='24' rx='4' fill='%2304070d' stroke='none'/%3E%3Cpath d='M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1'/%3E%3Cpath d='M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z'/%3E%3C/svg%3E">
+
+  <!-- Boot loader styles are inlined so the loader paints on the very first
+       frame, before fonts, CSS, GSAP or the 3D bundle have arrived. -->
+  <style>
+    html.is-locked, html.is-locked body { overflow: hidden; overscroll-behavior: none; }
+    html.is-return #boot-loader { display: none; }
+    html { background: #04070d; }
+
+    #boot-loader {
+      position: fixed; inset: 0; z-index: 60;
+      display: grid; place-items: center;
+      background: radial-gradient(ellipse at 50% 45%, rgba(20, 60, 90, 0.35), transparent 60%), #04070d;
+      color: #8fe7ff;
+      font-family: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.9s, filter 0.9s ease;
+    }
+    #boot-loader.is-done { opacity: 0; visibility: hidden; filter: blur(6px); pointer-events: none; }
+    #boot-loader.is-done .ld-core { transform: scale(1.08); }
+
+    .ld-core {
+      position: relative; display: flex; flex-direction: column; align-items: center; gap: 1.6rem;
+      transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .ld-scope { position: relative; width: min(240px, 58vw); aspect-ratio: 1; }
+    .ld-scope svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+
+    /* Radar rings — the same concentric grid the pieces stand on */
+    .ld-rings circle { fill: none; stroke: rgba(143, 231, 255, 0.16); stroke-width: 0.6; }
+    .ld-rings line { stroke: rgba(143, 231, 255, 0.08); stroke-width: 0.6; }
+    .ld-rings circle.pulse { stroke: rgba(143, 231, 255, 0.55); transform-origin: 100px 100px; animation: ld-pulse 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+    .ld-rings circle.pulse.b { animation-delay: 1.2s; }
+    @keyframes ld-pulse { from { transform: scale(0.15); opacity: 1; } to { transform: scale(1); opacity: 0; } }
+
+    .ld-sweep { transform-origin: 100px 100px; animation: ld-spin 3.2s linear infinite; }
+    .ld-ticks { transform-origin: 100px 100px; animation: ld-spin 14s linear infinite reverse; }
+    .ld-ticks circle { fill: none; stroke: rgba(143, 231, 255, 0.45); stroke-width: 1.2; stroke-dasharray: 1 6.5; }
+    @keyframes ld-spin { to { transform: rotate(360deg); } }
+
+    /* Progress arc + the pawn wireframe "printing" as bytes arrive */
+    .ld-arc-track { fill: none; stroke: rgba(143, 231, 255, 0.10); stroke-width: 1.5; }
+    .ld-arc { fill: none; stroke: #8fe7ff; stroke-width: 1.5; stroke-linecap: round;
+              stroke-dasharray: 1 1; stroke-dashoffset: 1; transform: rotate(-90deg); transform-origin: 100px 100px;
+              filter: drop-shadow(0 0 4px rgba(143, 231, 255, 0.8)); transition: stroke-dashoffset 0.35s ease-out; }
+    .ld-pawn path, .ld-pawn line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .ld-pawn .ghost { stroke: rgba(143, 231, 255, 0.14); stroke-width: 0.4; }
+    .ld-pawn .draw { stroke: #8fe7ff; stroke-width: 0.45; stroke-dasharray: 1 1; stroke-dashoffset: 1;
+                     filter: drop-shadow(0 0 1.2px rgba(143, 231, 255, 0.9)); transition: stroke-dashoffset 0.35s ease-out; }
+    .ld-scan { animation: ld-scan 2.2s ease-in-out infinite alternate; }
+    @keyframes ld-scan { from { transform: translateY(-58px); } to { transform: translateY(58px); } }
+
+    .ld-corner { position: absolute; width: 16px; height: 16px; border: 0 solid rgba(150, 215, 255, 0.55); }
+    .ld-corner.tl { top: -14px; left: -14px; border-top-width: 1px; border-left-width: 1px; }
+    .ld-corner.tr { top: -14px; right: -14px; border-top-width: 1px; border-right-width: 1px; }
+    .ld-corner.bl { bottom: -14px; left: -14px; border-bottom-width: 1px; border-left-width: 1px; }
+    .ld-corner.br { bottom: -14px; right: -14px; border-bottom-width: 1px; border-right-width: 1px; }
+
+    .ld-readout { width: min(300px, 78vw); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; }
+    .ld-title { display: flex; justify-content: space-between; color: #eaf4fb; margin-bottom: 0.7rem; }
+    .ld-title b { font-weight: 500; color: #8fe7ff; font-variant-numeric: tabular-nums; }
+    .ld-bar { position: relative; height: 2px; background: rgba(143, 231, 255, 0.12); overflow: hidden; }
+    .ld-bar i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: #8fe7ff;
+                box-shadow: 0 0 10px rgba(143, 231, 255, 0.8); transition: transform 0.35s ease-out; }
+    .ld-bar::after { content: ''; position: absolute; top: 0; bottom: 0; width: 30%;
+                     background: linear-gradient(90deg, transparent, rgba(234, 244, 251, 0.55), transparent);
+                     animation: ld-shimmer 1.6s ease-in-out infinite; }
+    @keyframes ld-shimmer { from { left: -30%; } to { left: 100%; } }
+    .ld-status { margin-top: 0.7rem; color: #9db1c4; letter-spacing: 0.08em; text-transform: none; min-height: 1.2em; }
+    .ld-status::after { content: '_'; color: #8fe7ff; animation: ld-blink 1.1s steps(1) infinite; }
+    @keyframes ld-blink { 50% { opacity: 0; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ld-sweep, .ld-ticks, .ld-scan, .ld-rings circle.pulse, .ld-bar::after, .ld-status::after { animation: none; }
+      .ld-rings circle.pulse { opacity: 0; }
+    }
+  </style>
+  <!-- Intro already played in this tab (e.g. coming back from sign-in):
+       skip the loader and scroll lock before anything paints. -->
+  <script>
+    try {
+      if (sessionStorage.getItem('introSeen')) {
+        document.documentElement.classList.add('is-return');
+        document.documentElement.classList.remove('is-locked');
+      }
+    } catch (e) {}
+  </script>
+  <!-- Start downloading the first piece immediately, in parallel with the
+       JS bundle, instead of waiting for it to load and spin up a worker.
+       scene.js picks the bytes up from window.__pawnPrefetch. -->
+  <script>
+    (function () {
+      if (typeof DecompressionStream === 'undefined' || !window.fetch) return;
+      var st = window.__pawnPrefetch = { progress: 0, listeners: [] };
+      function emit(p) { st.progress = p; st.listeners.forEach(function (f) { f(p); }); }
+      st.promise = fetch('%BASE_URL%models/Pawn.mesh').then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        var total = Number(res.headers.get('content-length')) || 0;
+        if (!res.body || !res.body.getReader) return res.arrayBuffer();
+        var reader = res.body.getReader(), chunks = [], got = 0;
+        return (function pump() {
+          return reader.read().then(function (r) {
+            if (r.done) {
+              var out = new Uint8Array(got), o = 0;
+              chunks.forEach(function (c) { out.set(c, o); o += c.byteLength; });
+              return out.buffer;
+            }
+            chunks.push(r.value); got += r.value.byteLength;
+            if (total) emit(Math.min(0.99, got / total));
+            return pump();
+          });
+        })();
+      });
+      st.promise.catch(function () {});
+    })();
+  </script>
+  <noscript><style>html.is-locked, html.is-locked body { overflow: auto; } #boot-loader { display: none; }</style></noscript>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,15 +129,67 @@
   <!-- UI Styles -->
   <link rel="stylesheet" href="/src/style.css">
   <link rel="stylesheet" href="/src/sections.css">
-
-  <!-- GSAP + ScrollTrigger, SplitType -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
-  <script src="https://unpkg.com/split-type"></script>
 </head>
 <body>
-  <!-- WebGL background — stays fixed behind everything; covered by each
-       section's solid background once you scroll past the hero. -->
+  <!-- Boot loader — shown until the first piece (the pawn) is ready. The
+       pawn outline traces itself in step with the real download progress. -->
+  <div id="boot-loader" role="status" aria-live="polite" aria-label="Loading">
+    <div class="ld-core">
+      <div class="ld-scope" aria-hidden="true">
+        <span class="ld-corner tl"></span><span class="ld-corner tr"></span>
+        <span class="ld-corner bl"></span><span class="ld-corner br"></span>
+        <svg viewBox="0 0 200 200">
+          <defs>
+            <linearGradient id="ldSweep" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#8fe7ff" stop-opacity="0"/>
+              <stop offset="1" stop-color="#8fe7ff" stop-opacity="0.28"/>
+            </linearGradient>
+            <linearGradient id="ldScanGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#8fe7ff" stop-opacity="0"/>
+              <stop offset="0.5" stop-color="#8fe7ff" stop-opacity="0.5"/>
+              <stop offset="1" stop-color="#8fe7ff" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <g class="ld-rings">
+            <circle cx="100" cy="100" r="96"/><circle cx="100" cy="100" r="74"/>
+            <circle cx="100" cy="100" r="52"/><circle cx="100" cy="100" r="30"/>
+            <line x1="4" y1="100" x2="196" y2="100"/><line x1="100" y1="4" x2="100" y2="196"/>
+            <line x1="32" y1="32" x2="168" y2="168"/><line x1="168" y1="32" x2="32" y2="168"/>
+            <circle class="pulse" cx="100" cy="100" r="96"/>
+            <circle class="pulse b" cx="100" cy="100" r="96"/>
+          </g>
+          <path class="ld-sweep" d="M100 100 L196 100 A96 96 0 0 0 167.9 32.1 Z" fill="url(#ldSweep)"/>
+          <g class="ld-ticks"><circle cx="100" cy="100" r="88"/></g>
+          <circle class="ld-arc-track" cx="100" cy="100" r="82"/>
+          <circle class="ld-arc" id="ldArc" cx="100" cy="100" r="82" pathLength="1"/>
+          <g class="ld-pawn" transform="translate(52 56) scale(4)">
+            <g class="ghost">
+              <line x1="12" y1="2" x2="12" y2="6"/><line x1="10" y1="4" x2="14" y2="4"/>
+              <path d="M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1"/>
+              <path d="M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z"/>
+              <line x1="6.5" y1="18" x2="17.5" y2="18"/>
+            </g>
+            <g class="draw">
+              <path pathLength="1" d="M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1"/>
+              <path pathLength="1" d="M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z"/>
+              <line pathLength="1" x1="6.5" y1="18" x2="17.5" y2="18"/>
+              <line pathLength="1" x1="12" y1="2" x2="12" y2="6"/>
+              <line pathLength="1" x1="10" y1="4" x2="14" y2="4"/>
+            </g>
+          </g>
+          <rect class="ld-scan" x="50" y="96" width="100" height="8" fill="url(#ldScanGrad)" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="ld-readout">
+        <div class="ld-title"><span>Setting up the board</span><b id="ldPct">000%</b></div>
+        <div class="ld-bar"><i id="ldBar"></i></div>
+        <div class="ld-status" id="ldStatus">&gt; connecting</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WebGL background — stays fixed behind everything and shows through
+       the translucent, blurred sections once you scroll past the hero. -->
   <div id="stage"></div>
   <div id="glow-backdrop"></div>
 
@@ -47,6 +215,7 @@
       <a href="#standings">Standings</a>
       <a href="#archive">Games</a>
       <a href="#honors">Club</a>
+      <a href="login.html" class="nav-account" data-account>Sign in</a>
     </nav>
     <button class="menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobileNav">
       <span class="line"></span>
@@ -60,12 +229,18 @@
     <a href="#standings"><span>02</span> Standings</a>
     <a href="#archive"><span>03</span> Games</a>
     <a href="#honors"><span>04</span> Club</a>
+    <a href="login.html" data-account><span>→</span> Sign in</a>
   </nav>
   <div class="mobile-nav-scrim" id="mobileNavScrim"></div>
 
   <main>
 
-    <!-- ============================= HERO ============================= -->
+    <!-- ============================= HERO =============================
+         The hero is pinned (sticky) inside a taller track. Scrolling through
+         the track drives the 3D pose: the piece glides to screen-centre and
+         tilts to face the viewer while the hero UI fades away; the content
+         sections only arrive once that pose is complete. -->
+    <div class="hero-track" id="heroTrack">
     <section class="hero" id="top">
 
       <div class="hud-deco" aria-hidden="true">
@@ -125,8 +300,11 @@
 
       <div class="hero-bottom ui-element">
         <div class="bottom-left">Connecting minds, elevating play.</div>
+        <div class="scroll-hint" aria-hidden="true"><span>Scroll</span><i></i></div>
+        <div class="bottom-right" id="pieceSync" aria-live="polite">Pieces 0/6</div>
       </div>
     </section>
+    </div>
 
     <!-- =========================== EVENTS ============================= -->
     <section class="site-section" id="events">
@@ -194,6 +372,11 @@
     </div>
     <div class="footer-bottom">© 2026 GBPUAT Chess Club</div>
   </footer>
+
+  <!-- GSAP + ScrollTrigger: at the end of <body> so they never block the
+       loader's first paint. The module entry below runs after them. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
 
   <!-- Entry Script -->
   <script type="module" src="/src/main.js"></script>

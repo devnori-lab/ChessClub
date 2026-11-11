@@ -111,14 +111,43 @@ npm run dev
 ---
 
 
-# 🔧 System Notes for Backend Integration
-The frontend UI is strictly decoupled from the data layer. The Vanilla JS SPA router is designed to eventually hook into standard REST endpoints for dynamic data ingestion, keeping the architecture clean:
+# 🗄️ Database & Accounts (Supabase)
 
-* GET /api/tournaments/active -> Populates Events & Competitions
+The site is static (GitHub Pages), so **all permissions live in the database** as Row Level Security.
+The anon key in the frontend is public by design; never put the `service_role` key in the repo or the site.
 
-* GET /api/players/metrics -> Populates Leaderboard & Analytics
+| Page | Who | What |
+|---|---|---|
+| `index.html` | everyone | 3D landing page + public club info |
+| `login.html` | everyone | sign in · create account · reset password; forwards to the right area |
+| `player.html` | players | rating & graph, register/withdraw for tournaments, my games, profile |
+| `admin.html` | admins | players (approve), tournaments, entries, rounds, games + PGN import, teams, matches, committee, announcements, milestones, roles |
 
-* GET /api/matches/pgn/:id -> Feeds the Match Archives viewer
+Schema: [`supabase/migrations/`](supabase/migrations/). Tables: `profiles`, `players`, `player_private`, `committee_members`, `teams`, `team_members`, `tournaments`, `tournament_entries`, `rounds`, `matches`, `games`, `rating_history`, `announcements`, `milestones`. Views: `tournament_standings` (with Buchholz), `team_standings`, `player_stats`.
+
+Rules in short:
+* New sign-ups get a **pending** player record; an admin approves them before they can enter tournaments.
+* **Club rating** is Elo (start 1200, K 40 for the first 30 games, then 20), replayed from all rated games whenever a game is added, edited or deleted.
+* Players can edit their own profile and private details, register or withdraw themselves while registration is open, and nothing else.
+* Admin rights can only be granted by an existing admin or from the SQL editor.
+
+### One-time setup
+1. **Apply the schema.** Either paste `supabase/migrations/*.sql` into the Supabase SQL editor and run it, or:
+   ```bash
+   supabase login
+   supabase link --project-ref <your-project-ref>
+   supabase db push
+   ```
+2. **Auth URLs** (Dashboard → Authentication → URL Configuration): Site URL `https://devnori-lab.github.io/ChessClub/`, and add redirect URLs `https://devnori-lab.github.io/ChessClub/**` and `http://localhost:5173/ChessClub/**`.
+3. **Keys.** Copy `.env.example` to `.env` with the Project URL and the anon/publishable key (Dashboard → Project Settings → API). Add the same two values as GitHub repo secrets `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Settings → Secrets and variables → Actions) so the deploy build gets them.
+4. **First admin.** Sign up on the site, then in the SQL editor:
+   ```sql
+   update public.profiles set role = 'admin'
+    where id = (select id from auth.users where email = 'you@example.com');
+   ```
+   After that, promote others from Admin → Accounts & roles.
+
+> Supabase's built-in email sender is heavily rate-limited on the free tier (a few emails per hour). For real sign-ups, add custom SMTP under Authentication → Emails, or turn off "Confirm email" while testing.
 
 ---
 

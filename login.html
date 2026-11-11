@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Sign in · GBPUAT Chess Club</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fe7ff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='24' height='24' rx='4' fill='%2304070d' stroke='none'/%3E%3Cpath d='M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1'/%3E%3Cpath d='M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+  <link rel="stylesheet" href="/src/app.css">
+</head>
+<body class="app">
+  <header class="site-header ui-element">
+    <a class="logo-group" href="./">
+      <div class="logo-shield" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="10" y1="4" x2="14" y2="4"/><path d="M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1"/><path d="M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z"/><line x1="6.5" y1="18" x2="17.5" y2="18"/></svg>
+      </div>
+      <div class="logo-text"><span>GBPUAT</span><span>CHESS CLUB</span></div>
+    </a>
+    <div class="app-header-actions"><a href="./">← Back to site</a></div>
+  </header>
+
+  <main class="app-main">
+    <div class="auth-wrap">
+      <p class="eyebrow-sm">Members area</p>
+      <h1 class="page-title" id="authTitle">Sign in</h1>
+      <p class="page-sub" id="authSub">Players see their tournaments, games and rating. Committee members manage the club.</p>
+
+      <div class="notice error" id="configError" hidden>
+        Sign-in isn't available right now: the site wasn't built with its database settings. (Admins: set the
+        <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> repo secrets.)
+      </div>
+      <div class="notice" id="authNotice" hidden></div>
+
+      <section class="panel">
+        <div class="tabs" role="tablist" id="authTabs">
+          <button type="button" role="tab" aria-selected="true" data-tab="signin">Sign in</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="signup">Create account</button>
+        </div>
+
+        <form class="form" id="signinForm" data-pane="signin">
+          <div class="field"><label for="siEmail">Email</label><input id="siEmail" type="email" autocomplete="email" required></div>
+          <div class="field"><label for="siPass">Password</label><input id="siPass" type="password" autocomplete="current-password" required></div>
+          <div class="btn-row" style="justify-content:space-between">
+            <button class="btn primary" type="submit">Sign in</button>
+            <button class="link-btn" type="button" id="forgotBtn">Forgot password?</button>
+          </div>
+        </form>
+
+        <form class="form" id="signupForm" data-pane="signup" hidden>
+          <div class="field"><label for="suName">Full name</label><input id="suName" autocomplete="name" required maxlength="80"></div>
+          <div class="field"><label for="suEmail">Email</label><input id="suEmail" type="email" autocomplete="email" required></div>
+          <div class="field">
+            <label for="suPass">Password</label>
+            <input id="suPass" type="password" autocomplete="new-password" required minlength="8">
+            <span class="hint">At least 8 characters.</span>
+          </div>
+          <p class="hint muted" style="margin:0">New accounts are reviewed by the committee before you can enter tournaments.</p>
+          <div class="btn-row"><button class="btn primary" type="submit">Create account</button></div>
+        </form>
+
+        <form class="form" id="forgotForm" data-pane="forgot" hidden>
+          <div class="field"><label for="fpEmail">Email</label><input id="fpEmail" type="email" autocomplete="email" required></div>
+          <div class="btn-row" style="justify-content:space-between">
+            <button class="btn primary" type="submit">Send reset link</button>
+            <button class="link-btn" type="button" data-back>Back to sign in</button>
+          </div>
+        </form>
+
+        <form class="form" id="resetForm" data-pane="reset" hidden>
+          <div class="field">
+            <label for="rpPass">New password</label>
+            <input id="rpPass" type="password" autocomplete="new-password" required minlength="8">
+          </div>
+          <div class="btn-row"><button class="btn primary" type="submit">Save new password</button></div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="/src/login.js"></script>
+</body>
+</html>
