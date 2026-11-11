@@ -1,3 +1,4 @@
+import { apiConfigured, listGames, getGame, viewerGame } from './publicApi.js';
 // =====================================================================
 // SECTIONS
 // Renders the Events, Standings, Games, and Club sections directly into
@@ -74,47 +75,6 @@ const HONORS = [
 
 const RESULT_LABEL = { win: 'Won', loss: 'Lost', draw: 'Drawn' };
 
-// ---- Demo game data for the Games → replay viewer ----------------------
-const INITIAL_BOARD = [
-  ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'],
-  ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
-  ['.', '.', '.', '.', '.', '.', '.', '.'],
-  ['.', '.', '.', '.', '.', '.', '.', '.'],
-  ['.', '.', '.', '.', '.', '.', '.', '.'],
-  ['.', '.', '.', '.', '.', '.', '.', '.'],
-  ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
-  ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'],
-];
-const DEMO_MOVES = [
-  { san: 'e4',  from: 'e2', to: 'e4' },
-  { san: 'e5',  from: 'e7', to: 'e5' },
-  { san: 'Nf3', from: 'g1', to: 'f3' },
-  { san: 'Nc6', from: 'b8', to: 'c6' },
-  { san: 'Bb5', from: 'f1', to: 'b5' },
-  { san: 'a6',  from: 'a7', to: 'a6' },
-  { san: 'Ba4', from: 'b5', to: 'a4' },
-  { san: 'Nf6', from: 'g8', to: 'f6' },
-];
-function squareToRC(square) {
-  const col = square.charCodeAt(0) - 97;
-  const row = 8 - parseInt(square[1], 10);
-  return [row, col];
-}
-function buildSnapshots() {
-  let board = INITIAL_BOARD.map((row) => row.slice());
-  const snaps = [board.map((r) => r.slice())];
-  for (const mv of DEMO_MOVES) {
-    const [fr, fc] = squareToRC(mv.from);
-    const [tr, tc] = squareToRC(mv.to);
-    board[tr][tc] = board[fr][fc];
-    board[fr][fc] = '.';
-    snaps.push(board.map((r) => r.slice()));
-  }
-  return snaps;
-}
-const DEMO_SNAPSHOTS = buildSnapshots();
-const PIECE_GLYPH = { P: '♙', N: '♘', B: '♗', R: '♖', Q: '♕', K: '♔', p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
-
 // ---- Deterministic generated art (event banners + archive thumbnails) --
 function mulberry32(seed) {
   let a = seed;
@@ -166,6 +126,7 @@ export function initSections() {
   renderEvents();
   renderStandings();
   renderArchive();
+  watchArchive();
   renderHonors();
   bindEventDelegation();
   startCountdowns();
@@ -267,71 +228,74 @@ function renderStandings() {
     </div>`;
 }
 
-// ---- Archive / replay -----------------------------------------------------
+// ---- Archive ------------------------------------------------------------
+// Real public games when the database is configured; demo cards otherwise.
+// Opening a card loads the 3D game viewer on demand.
 
-let archiveOpenId = null;
-let pgnIndex = 0;
+let archiveRows = null;
+const DEMO_PGN = '[Event "Demo"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O *';
+const RESULT_CLASS = { '1-0': 'win', '0-1': 'loss', '1/2-1/2': 'draw' };
+const shortDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '');
 
 function renderArchive() {
   const mount = document.getElementById('archiveGrid');
   if (!mount) return;
-  if (archiveOpenId) { mount.innerHTML = renderReplay(); return; }
-
+  if (archiveRows) {
+    mount.innerHTML = `<div class="archive-grid">${archiveRows.map((g, i) => `
+      <button type="button" class="case-card in" data-action="open-game" data-id="${g.id}">
+        ${caseArt(i * 97 + 13)}
+        <div class="case-meta">
+          <b>${escapeHtml(g.white?.full_name || '—')}</b> vs <b>${escapeHtml(g.black?.full_name || '—')}</b><br>
+          ${escapeHtml([shortDate(g.played_at), g.opening || g.tournament?.name].filter(Boolean).join(' · '))}
+        </div>
+        <span class="case-result ${RESULT_CLASS[g.result] || ''}">${escapeHtml(g.result === '1/2-1/2' ? '½–½' : g.result)}</span>
+        ${g.analysis_updated_at ? '<span class="case-result win">analysed</span>' : ''}
+      </button>`).join('')}</div>
+      <p class="archive-more"><a href="archive.html">Open the full archive →</a></p>`;
+    return;
+  }
   mount.innerHTML = `<div class="archive-grid">${ARCHIVES.map((a, i) => `
-    <div class="case-card reveal" data-action="open-archive" data-id="${a.id}">
+    <button type="button" class="case-card reveal" data-action="open-demo" data-id="${a.id}">
       ${caseArt(i * 97 + 13)}
       <div class="case-meta">
         vs <b>${a.opponent}</b><br>
         ${a.date} · ${a.opening}
       </div>
       <span class="case-result ${a.result}">${RESULT_LABEL[a.result]}</span>
-    </div>`).join('')}</div>`;
+    </button>`).join('')}</div>`;
 }
 
-function renderReplay() {
-  const archive = ARCHIVES.find((a) => a.id === archiveOpenId);
-  const board = DEMO_SNAPSHOTS[pgnIndex];
-  return `
-    <span class="replay-back" data-action="close-archive">← Back to all games</span>
-    <div class="replay-panel">
-      <div class="board2d">${renderBoardCells(board)}</div>
-      <div class="replay-side">
-        <div class="replay-meta">Replay: vs <b>${archive.opponent}</b> · ${archive.date} · <span class="case-result ${archive.result}">${RESULT_LABEL[archive.result]}</span></div>
-        <div class="pgn-moves">${renderMoveLog()}</div>
-        <div class="pgn-controls">
-          <button data-action="pgn-prev" ${pgnIndex <= 0 ? 'disabled' : ''} type="button">◀ Previous</button>
-          <button data-action="pgn-next" ${pgnIndex >= DEMO_MOVES.length ? 'disabled' : ''} type="button">Next move ▶</button>
-        </div>
-        <p class="pgn-note">Demo playback using a well-known opening line for now — swap in this match's real moves once you're recording PGNs.</p>
-      </div>
-    </div>`;
+function escapeHtml(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-function renderBoardCells(board) {
-  let html = '';
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      const light = (r + c) % 2 === 0;
-      const piece = board[r][c];
-      let inner = '';
-      if (piece !== '.') {
-        const isWhite = piece === piece.toUpperCase();
-        inner = `<span class="${isWhite ? 'pc-w' : 'pc-b'}">${PIECE_GLYPH[piece]}</span>`;
-      }
-      html += `<div class="sq ${light ? 'light' : 'dark'}">${inner}</div>`;
+// Fetch real games once the section is close to the viewport.
+function watchArchive() {
+  const mount = document.getElementById('archiveGrid');
+  if (!mount || !apiConfigured) return;
+  const io = new IntersectionObserver(async (entries) => {
+    if (!entries.some((e) => e.isIntersecting)) return;
+    io.disconnect();
+    try {
+      const rows = await listGames({ limit: 6, featuredFirst: true });
+      if (rows.length) { archiveRows = rows; renderArchive(); }
+    } catch { /* keep demo cards */ }
+  }, { rootMargin: '600px 0px' });
+  io.observe(mount);
+}
+
+async function openArchiveGame(card) {
+  card.classList.add('opening');
+  try {
+    const { openGameViewer } = await import('./chess/viewer.js');
+    if (card.dataset.action === 'open-demo') {
+      const a = ARCHIVES.find((x) => x.id === card.dataset.id);
+      openGameViewer({ pgn: DEMO_PGN, white: 'GBPUAT', black: a.opponent, result: '*', event: 'Demo game', date: a.date, opening: a.opening }, card);
+    } else {
+      const g = await getGame(card.dataset.id);
+      if (g) openGameViewer(viewerGame(g), card);
     }
-  }
-  return html;
-}
-
-function renderMoveLog() {
-  return DEMO_MOVES.map((mv, i) => {
-    let cls = '';
-    if (i === pgnIndex - 1) cls = 'current';
-    else if (i < pgnIndex - 1) cls = 'done';
-    const num = i % 2 === 0 ? `${Math.floor(i / 2) + 1}. ` : '';
-    return `<span class="mv ${cls}">${num}${mv.san}</span>`;
-  }).join(' ');
+  } finally { card.classList.remove('opening'); }
 }
 
 // ---- Honors ---------------------------------------------------------------
@@ -376,11 +340,7 @@ function bindEventDelegation() {
       return;
     }
 
-    const openArchive = e.target.closest('[data-action="open-archive"]');
-    if (openArchive) { archiveOpenId = openArchive.dataset.id; pgnIndex = 0; renderArchive(); return; }
-
-    if (e.target.closest('[data-action="close-archive"]')) { archiveOpenId = null; renderArchive(); return; }
-    if (e.target.closest('[data-action="pgn-next"]')) { pgnIndex = Math.min(DEMO_MOVES.length, pgnIndex + 1); renderArchive(); return; }
-    if (e.target.closest('[data-action="pgn-prev"]')) { pgnIndex = Math.max(0, pgnIndex - 1); renderArchive(); return; }
+    const gameCard = e.target.closest('[data-action="open-game"], [data-action="open-demo"]');
+    if (gameCard) { openArchiveGame(gameCard); return; }
   });
 }

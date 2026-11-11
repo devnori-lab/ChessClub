@@ -1,3 +1,4 @@
+import { storedAccount, renderAccountMenu } from './account-menu.js';
 import { initScene } from './scene.js';
 import { initSections } from './sections.js';
 
@@ -262,18 +263,14 @@ syncScroll();
 // without loading the Supabase SDK on this (animation-heavy) page.
 // login.html forwards signed-in users to their player/admin area.
 function initAccountLink() {
-  let signedIn = false;
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) { signedIn = true; break; }
-    }
-  } catch (e) { /* storage blocked */ }
-  if (!signedIn) return;
+  const acc = storedAccount();
+  renderAccountMenu(acc);
+  if (!acc) return;
   document.querySelectorAll('[data-account]').forEach((a) => {
     const arrow = a.querySelector('span');
     a.textContent = ' My Club';
     if (arrow) a.prepend(arrow); else a.textContent = 'My Club';
+    a.href = 'player.html';
   });
 }
 

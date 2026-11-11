@@ -1,5 +1,6 @@
 // Session + role helpers shared by the login, player and admin pages.
 import { supabase, isConfigured } from './supabase.js';
+import { cacheProfile, renderAccountMenu } from './account-menu.js';
 
 const BASE = import.meta.env.BASE_URL;
 export const PAGES = {
@@ -24,7 +25,18 @@ export async function getMe() {
     supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
     supabase.from('players').select('*').eq('profile_id', uid).maybeSingle(),
   ]);
-  return { user: session.user, profile, player };
+  const me = { user: session.user, profile, player };
+  cacheProfile(me);
+  return me;
+}
+
+/** Header account menu for a loaded `me`. */
+export function showAccount(me, current) {
+  renderAccountMenu(me ? {
+    id: me.user.id, email: me.user.email, role: me.profile?.role || 'player',
+    name: me.player?.full_name || me.profile?.display_name || me.user.email,
+    avatar: me.player?.photo_url || me.profile?.avatar_url || me.user.user_metadata?.avatar_url || null,
+  } : null, current);
 }
 
 export function homeFor(me) {
@@ -50,7 +62,8 @@ export async function requireRole(role) {
 }
 
 export async function signOut() {
-  if (isConfigured) await supabase.auth.signOut();
+  cacheProfile(null);
+  if (isConfigured) await supabase.auth.signOut().catch(() => {});
   location.href = PAGES.home;
 }
 
@@ -59,7 +72,7 @@ export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-export function toast(msg, kind = 'ok') {
+export function toast(msg, kind = 'ok', action = null) {
   let host = document.getElementById('toasts');
   if (!host) {
     host = document.createElement('div');
@@ -71,9 +84,20 @@ export function toast(msg, kind = 'ok') {
   const el = document.createElement('div');
   el.className = `toast ${kind}`;
   el.textContent = msg;
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'toast-action'; b.textContent = action.action;
+    b.onclick = () => { action.run(); el.remove(); };
+    el.appendChild(b);
+  }
+  // Toasts must sit above an open modal <dialog> (top layer), so re-attach there.
+  const modal = [...document.querySelectorAll('dialog[open]')].pop();
+  (modal || document.body).appendChild(host);
   host.appendChild(el);
-  setTimeout(() => el.classList.add('out'), 3600);
-  setTimeout(() => el.remove(), 4100);
+  while (host.children.length > 3) host.firstElementChild.remove();
+  const life = action ? 7000 : 3600;
+  setTimeout(() => el.classList.add('out'), life);
+  setTimeout(() => el.remove(), life + 500);
 }
 
 /** Readable message from a Supabase/PostgREST error. */

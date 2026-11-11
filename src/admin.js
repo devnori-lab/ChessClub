@@ -2,9 +2,9 @@
 // table; a few sections add shortcuts (approve, confirm, PGN import).
 // The database (RLS) is what actually restricts this to admins.
 import { supabase } from './supabase.js';
-import { requireRole, signOut, esc, toast, errText } from './auth.js';
+import { requireRole, showAccount, esc, toast, errText } from './auth.js';
+import { initDesk, openDesk, showDeskHome } from './desk.js';
 
-document.getElementById('signOut').addEventListener('click', signOut);
 const nav = document.getElementById('adminNav');
 const view = document.getElementById('adminView');
 const dialog = document.getElementById('editor');
@@ -45,7 +45,7 @@ const LOOKUPS = {
   players: { select: 'id, full_name, status, is_external, lichess_username', order: 'full_name', label: (r) => `${r.full_name}${r.is_external ? ' (ext)' : r.status !== 'active' ? ` (${r.status})` : ''}`, extra: (r) => ({ lichess: r.lichess_username }) },
   tournaments: { select: 'id, name, starts_on', order: 'starts_on', desc: true, label: (r) => r.name },
   teams: { select: 'id, name, season', order: 'name', label: (r) => `${r.name}${r.season ? ` · ${r.season}` : ''}` },
-  rounds: { select: 'id, number, tournament:tournaments(name)', order: 'number', label: (r) => `${r.tournament?.name || '?'} · R${r.number}` },
+  rounds: { select: 'id, number, tournament_id, tournament:tournaments(name)', order: 'number', label: (r) => `${r.tournament?.name || '?'} · R${r.number}`, extra: (r) => ({ tournament_id: r.tournament_id, number: r.number }) },
   matches: { select: 'id, home:teams!matches_home_team_id_fkey(name), away:teams!matches_away_team_id_fkey(name), scheduled_at', order: 'scheduled_at', desc: true, label: (r) => `${r.home?.name} vs ${r.away?.name}` },
 };
 const lookupCache = {};
@@ -73,6 +73,7 @@ const F = {
 // ---- sections ------------------------------------------------------------
 const SECTIONS = {
   overview: { title: 'Overview', custom: renderOverview },
+  desk: { title: 'Tournament desk', custom: () => showDeskHome() },
 
   players: {
     title: 'Players', table: 'players', order: 'full_name',
@@ -116,13 +117,15 @@ const SECTIONS = {
       { label: 'Dates', html: (r) => `${fmtDate(r.starts_on)}${r.ends_on && r.ends_on !== r.starts_on ? ` – ${fmtDate(r.ends_on)}` : ''}` },
       { label: 'Venue', html: (r) => esc(r.venue || '') },
     ],
-    defaults: { format: 'swiss', kind: 'individual', status: 'draft', rated: true, time_control_increment_s: 0, entry_fee: 0 },
+    rowActions: (r) => `<button class="btn sm" data-desk="${r.id}">Open desk</button>`,
+    defaults: { format: 'swiss', kind: 'individual', status: 'draft', rated: true, time_control_increment_s: 0, entry_fee: 0, mode: 'offline' },
     fields: [
       F.text('name', 'Name', { required: true }), F.text('slug', 'Slug (URL id)', { hint: 'e.g. winter-open-2026' }),
       F.enm('format', 'Format', E.tournament_format), F.enm('kind', 'Kind', E.tournament_kind),
       F.enm('status', 'Status', E.tournament_status), F.bool('is_published', 'Published (visible on the site)'),
       F.num('time_control_base_min', 'Base time (min)'), F.num('time_control_increment_s', 'Increment (s)'),
       F.bool('rated', 'Rated (counts for club rating)'), F.num('rounds_planned', 'Rounds'),
+      F.enm('mode', 'Played', ['offline', 'online'], { hint: 'Online games don’t change club ratings' }),
       F.date('starts_on', 'Starts'), F.date('ends_on', 'Ends'), F.text('venue', 'Venue'),
       F.dt('registration_opens_at', 'Registration opens'), F.dt('registration_closes_at', 'Registration closes'),
       F.num('max_entries', 'Max entries'), F.num('entry_fee', 'Entry fee (₹)', { step: '0.01' }),
@@ -181,7 +184,8 @@ const SECTIONS = {
       { label: 'Event', html: (r) => `${esc(r.tournament?.name || 'Friendly')}${r.is_featured ? ' <span class="badge good">featured</span>' : ''}${r.pgn ? ' <span class="badge">pgn</span>' : ''}` },
     ],
     defaults: { result: '*', source: 'otb', rated: true, is_public: true },
-    pgnImport: true,
+    pgnImport: true, studio: true,
+    rowActions: () => '',
     fields: [
       F.area('pgn', 'PGN', { hint: 'Paste a PGN and press “Fill from PGN” to fill players, result, date and opening.' }),
       F.fk('white_id', 'White', 'players', { required: true }), F.fk('black_id', 'Black', 'players', { required: true }),
@@ -195,6 +199,11 @@ const SECTIONS = {
       F.num('white_lichess_rating', 'White Lichess rating', { hint: 'From PGN WhiteElo' }), F.num('white_lichess_change', 'White Lichess change'),
       F.num('black_lichess_rating', 'Black Lichess rating', { hint: 'From PGN BlackElo' }), F.num('black_lichess_change', 'Black Lichess change'),
       F.bool('rated', 'Rated'), F.bool('is_public', 'Public'), F.bool('is_featured', 'Featured in archive'),
+      F.text('final_fen', 'Final position (FEN)', { hint: 'Filled automatically by the studio' }),
+      F.area('analysis_pgn', 'Analysis PGN', { hint: 'Preferred over the PGN by viewers' }),
+      F.enm('analysis_source', 'Analysis source', ['lichess', 'chesscom', 'manual', 'other'], { blank: true }),
+      F.fk('advance_id', 'Knockout: advances after a draw', 'players'),
+      F.enm('home_side', 'Team match: home team colour', ['white', 'black'], { blank: true }),
       F.area('notes', 'Notes / annotations'),
     ],
   },
@@ -371,7 +380,7 @@ function renderTable(key) {
     ${rows.length ? `<div class="table-wrap"><table class="data-table">
       <thead><tr>${s.columns.map((c) => `<th>${c.label}</th>`).join('')}<th></th></tr></thead>
       <tbody>${rows.map((r) => `<tr>${s.columns.map((c) => `<td${c.num ? ' class="num"' : ''}>${c.html(r) ?? ''}</td>`).join('')}
-        <td class="actions">${s.rowActions ? s.rowActions(r) : ''} <button class="btn sm ghost" data-edit="${r.id}">Edit</button></td></tr>`).join('')}
+        <td class="actions">${s.rowActions ? s.rowActions(r) : ''} <button class="btn sm ghost" data-edit="${r.id}">${s.studio ? 'Open' : 'Edit'}</button>${s.studio ? ` <button class="btn sm ghost" data-raw="${r.id}" title="Edit every stored field">All fields</button>` : ''}</td></tr>`).join('')}
       </tbody></table></div>
       <p class="muted" style="margin-top:.6rem;font-size:.85rem">${rows.length} row${rows.length === 1 ? '' : 's'}${st.rows.length >= 500 ? ' (first 500)' : ''}</p>`
     : `<p class="empty">Nothing here yet.</p>`}`;
@@ -391,11 +400,17 @@ view.addEventListener('change', (e) => {
   if (e.target.matches('[data-filter]')) { state[current].filters[e.target.dataset.filter] = e.target.value; open(current); }
 });
 view.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-new],[data-edit],[data-quick],[data-goto]');
+  const t = e.target.closest('[data-new],[data-edit],[data-raw],[data-quick],[data-goto],[data-desk]');
   if (!t) return;
+  if (t.dataset.desk) { current = 'desk'; renderNav(pendingCounts); return openDesk(t.dataset.desk); }
   if (t.dataset.goto) { current = t.dataset.goto; renderNav(pendingCounts); return open(current); }
-  if (t.matches('[data-new]')) return openEditor(current, null);
-  if (t.dataset.edit) return openEditor(current, state[current].rows.find((r) => r.id === t.dataset.edit));
+  const sec = SECTIONS[current];
+  if (t.matches('[data-new]')) return sec.studio ? openGameStudio(null) : openEditor(current, null);
+  if (t.dataset.raw) return openEditor(current, state[current].rows.find((r) => r.id === t.dataset.raw));
+  if (t.dataset.edit) {
+    const row = state[current].rows.find((r) => r.id === t.dataset.edit);
+    return sec.studio ? openGameStudio(row) : openEditor(current, row);
+  }
   t.disabled = true;
   await quick(t.dataset.quick, t.dataset.id);
   t.disabled = false;
@@ -444,7 +459,7 @@ function fieldHtml(f, v) {
   return `<div class="field${f.wide ? ' wide' : ''}"><label for="${id}">${esc(f.label)}</label>${input}${hint}</div>`;
 }
 
-function openEditor(key, row) {
+function openEditor(key, row, after = null) {
   const s = SECTIONS[key];
   const rec = row || { ...(s.defaults || {}) };
   const priv = one(rec.private);
@@ -483,7 +498,7 @@ function openEditor(key, row) {
       toast(error.code === '23503' ? 'This is still used elsewhere (e.g. in recorded games), so it can’t be deleted. Mark it inactive instead.' : errText(error), 'error');
       return;
     }
-    dialog.close(); toast(s.deleteRpc?.done?.[data] || 'Deleted.'); afterWrite(s);
+    dialog.close(); toast(s.deleteRpc?.done?.[data] || 'Deleted.'); if (after) after(); else afterWrite(s);
   };
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -510,7 +525,7 @@ function openEditor(key, row) {
     }
     btn.disabled = false;
     if (error) { toast(errText(error), 'error'); return; }
-    dialog.close(); toast('Saved.'); afterWrite(s);
+    dialog.close(); toast('Saved.'); if (after) after(); else afterWrite(s);
   };
   dialog.showModal();
 }
@@ -572,6 +587,36 @@ function fillFromPgn(form) {
   toast(missing.length ? `Filled. Not found in players: ${missing.join(', ')} — add them first (or set their Lichess username) or pick manually.` : 'Filled from PGN.', missing.length ? 'error' : 'ok');
 }
 
+// ---- game studio ---------------------------------------------------------
+export async function openGameStudio(row, preset = null, after = null) {
+  await Promise.all(['players', 'tournaments', 'rounds'].map((t) => lookup(t, true)));
+  const { openStudio } = await import('./studio.js');
+  let full = row;
+  if (row?.id && row.pgn === undefined) {
+    const { data } = await supabase.from('games').select('*').eq('id', row.id).single();
+    full = data || row;
+  }
+  openStudio({
+    supabase, me, toast, game: full, preset,
+    players: lookupCache.players.map((p) => ({ ...p })),
+    tournaments: lookupCache.tournaments, rounds: lookupCache.rounds,
+    existing: (state.games?.rows || []).slice(),
+    addPlayer: async (name, external) => {
+      const { data, error } = await supabase.from('players')
+        .insert({ full_name: name, is_external: external, status: external ? 'guest' : 'active' }).select('id, full_name, status, is_external, lichess_username').single();
+      if (error) { toast(errText(error), 'error'); return null; }
+      lookup('players', true);
+      return { id: data.id, label: LOOKUPS.players.label(data), lichess: data.lichess_username };
+    },
+    onSaved: () => { refreshAfterGame(after); },
+    onDeleted: () => { refreshAfterGame(after); },
+  });
+}
+function refreshAfterGame(after) {
+  if (after) after();
+  else if (current === 'games') open('games');
+}
+
 // ---- overview ----------------------------------------------------------
 async function renderOverview() {
   view.innerHTML = `<p class="empty">Loading overview…</p>`;
@@ -608,9 +653,9 @@ async function renderOverview() {
           : `<p class="empty">Nothing to confirm.</p>`}
       </section>
     </div>
-    <section class="panel" style="margin-top:1.5rem"><h2>Active & upcoming tournaments <button class="btn sm ghost" data-goto="tournaments">Manage</button></h2>
+    <section class="panel" style="margin-top:1.5rem"><h2>Active & upcoming tournaments <button class="btn sm ghost" data-goto="desk">Tournament desk</button></h2>
       ${upcoming.data?.length ? `<div class="table-wrap"><table class="data-table"><tbody>${upcoming.data.map((t) => `<tr>
-        <td><b>${esc(t.name)}</b>${t.is_published ? '' : ' <span class="badge">hidden</span>'}</td><td>${badge(t.status)}</td><td class="num">${fmtDate(t.starts_on)}</td></tr>`).join('')}</tbody></table></div>`
+        <td><b>${esc(t.name)}</b>${t.is_published ? '' : ' <span class="badge">hidden</span>'}</td><td>${badge(t.status)}</td><td class="num">${fmtDate(t.starts_on)}</td><td class="actions"><button class="btn sm" data-desk="${t.id}">Open desk</button></td></tr>`).join('')}</tbody></table></div>`
         : `<p class="empty">No tournaments planned. Create one under Tournaments.</p>`}
     </section>`;
 }
@@ -618,10 +663,24 @@ async function renderOverview() {
 // ---- boot --------------------------------------------------------------
 (async () => {
   me = await requireRole('admin');
-  document.getElementById('who').textContent = me.player?.full_name || me.user.email;
+  showAccount(me, 'admin');
+  initDesk({
+    supabase, toast, errText, esc, me, view,
+    openGameStudio: (row, preset, after) => openGameStudio(row, preset, after),
+    editTournament: async (t, after) => { await lookup('tournaments'); openEditor('tournaments', t, after); },
+    setHash: (h) => history.replaceState(null, '', `#${h}`),
+  });
   const fromHash = location.hash.slice(1);
-  if (SECTIONS[fromHash]) current = fromHash;
+  const deskId = fromHash.startsWith('desk/') ? fromHash.slice(5) : null;
+  if (deskId) current = 'desk'; else if (SECTIONS[fromHash]) current = fromHash;
   renderNav();
   refreshCounts();
-  open(current);
+  if (deskId) openDesk(deskId); else open(current);
+
+  // Follow hash links / back-forward between sections and tournaments.
+  addEventListener('hashchange', () => {
+    const h = location.hash.slice(1);
+    if (h.startsWith('desk/')) { current = 'desk'; renderNav(pendingCounts); openDesk(h.slice(5)); }
+    else if (SECTIONS[h]) { current = h; renderNav(pendingCounts); open(h); }
+  });
 })();

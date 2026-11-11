@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Game archive · GBPUAT Chess Club</title>
+  <meta name="description" content="Every recorded GBPUAT Chess Club game — replay, see the analysis, and explore other lines.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fe7ff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='24' height='24' rx='4' fill='%2304070d' stroke='none'/%3E%3Cpath d='M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1'/%3E%3Cpath d='M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Symbols+2&text=%E2%99%9A%E2%99%9B%E2%99%9C%E2%99%9D%E2%99%9E%E2%99%9F&display=block" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+  <link rel="stylesheet" href="/src/app.css">
+</head>
+<body class="app">
+  <header class="site-header ui-element">
+    <a class="logo-group" href="./">
+      <div class="logo-shield" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="10" y1="4" x2="14" y2="4"/><path d="M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1"/><path d="M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z"/><line x1="6.5" y1="18" x2="17.5" y2="18"/></svg>
+      </div>
+      <div class="logo-text"><span>GBPUAT</span><span>CHESS CLUB</span></div>
+    </a>
+    <nav class="app-header-actions">
+      <a href="./" class="app-link">Home</a>
+      <a href="archive.html" class="app-link" aria-current="page">Archive</a>
+      <a href="ratings.html" class="app-link">Ratings</a>
+    </nav>
+    <div class="acct" data-account-menu></div>
+  </header>
+
+  <main class="app-main">
+    <p class="eyebrow-sm">Archive</p>
+    <h1 class="page-title">Club games</h1>
+    <p class="page-sub">Every recorded game. Open one to replay it — analysed games show brilliant moves, mistakes and the better alternatives, and you can try your own lines on the board.</p>
+
+    <div class="toolbar archive-tools">
+      <div class="btn-row">
+        <input type="search" id="aSearch" placeholder="Player, opening or event…" aria-label="Search games">
+        <select id="aResult" aria-label="Result"><option value="">Any result</option><option value="1-0">White won</option><option value="0-1">Black won</option><option value="1/2-1/2">Draw</option></select>
+        <select id="aKind" aria-label="Type"><option value="">Offline & online</option><option value="otb">Offline</option><option value="lichess">Online (Lichess)</option></select>
+      </div>
+      <div class="btn-row">
+        <label class="chip"><input type="checkbox" id="aAnalysed"> Analysed</label>
+        <label class="chip"><input type="checkbox" id="aFeatured"> Featured</label>
+      </div>
+    </div>
+    <div id="archive" class="tile-grid" aria-live="polite"><p class="empty">Loading games…</p></div>
+  </main>
+
+  <script type="module" src="/src/archive.js"></script>
+</body>
+</html>

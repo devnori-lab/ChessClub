@@ -1,5 +1,10 @@
 import { supabase, isConfigured } from './supabase.js';
-import { getMe, homeFor, PAGES, errText } from './auth.js';
+import { getMe, homeFor, PAGES, errText, signOut } from './auth.js';
+import { renderAccountMenu } from './account-menu.js';
+
+const SIGNING_OUT = new URLSearchParams(location.search).has('signout');
+if (SIGNING_OUT) signOut();
+renderAccountMenu(null);
 
 const $ = (id) => document.getElementById(id);
 const panes = document.querySelectorAll('[data-pane]');
@@ -135,7 +140,7 @@ if (!isConfigured) {
 
   if (recovering) {
     showPane('reset');
-  } else {
+  } else if (!SIGNING_OUT) {
     // Already signed in (or just confirmed via email link) → your area.
     goHome();
   }

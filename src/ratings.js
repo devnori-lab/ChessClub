@@ -1,5 +1,8 @@
 // Live calculator on the ratings page — same maths as recompute_ratings()
 // in supabase/migrations (Postgres round() rounds halves away from zero).
+import { renderAccountMenu } from './account-menu.js';
+
+renderAccountMenu(undefined, 'ratings');
 const $ = (id) => document.getElementById(id);
 const round = (x) => Math.sign(x) * Math.round(Math.abs(x));
 

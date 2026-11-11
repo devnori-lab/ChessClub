@@ -15,6 +15,7 @@ export default defineConfig({
         player: resolve(import.meta.dirname, 'player.html'),
         admin: resolve(import.meta.dirname, 'admin.html'),
         ratings: resolve(import.meta.dirname, 'ratings.html'),
+        archive: resolve(import.meta.dirname, 'archive.html'),
       },
     },
   },

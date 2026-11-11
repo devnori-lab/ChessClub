@@ -507,3 +507,13 @@ body.nav-locked { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .mobile-nav, .event-card, .case-card { transition: none; }
 }
+
+/* archive cards are buttons now (keyboard-openable) */
+button.case-card { font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%; }
+button.case-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.case-card.in { animation: case-in 0.6s ease both; }
+.case-card.opening { border-color: var(--accent); box-shadow: 0 0 30px rgba(143, 231, 255, 0.25); }
+.case-card .case-result + .case-result { margin-left: 0.35rem; }
+@keyframes case-in { from { opacity: 0; transform: translateY(14px); } }
+.archive-more { margin: 1.5rem 0 0; font-family: var(--font-display); font-weight: 600; }
+.archive-more a { color: var(--accent); border-bottom: 1px solid var(--accent-dim); }

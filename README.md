@@ -121,8 +121,9 @@ The anon key in the frontend is public by design; never put the `service_role` k
 | `index.html` | everyone | 3D landing page + public club info |
 | `login.html` | everyone | Google or email sign-in · create account · reset password; forwards to the right area |
 | `ratings.html` | everyone | how the club rating works, with a calculator |
+| `archive.html` | everyone | every public game as a tile; opens the 3D game viewer (analysis effects, explore lines) — `?game=<id>` deep-links |
 | `player.html` | players | first-visit level survey, club + Lichess rating & graph, register/withdraw, my games, profile |
-| `admin.html` | admins | players (all details, levels), accounts (roles, delete), tournaments, entries, rounds, games + PGN import, teams, matches, committee, announcements, milestones, roles |
+| `admin.html` | admins | **Tournament desk** (wizard, auto pairings for every format, results, bracket/crosstable), **game studio** (board entry, Lichess import, analysis), players (all details, levels), accounts (roles, delete), tournaments, entries, rounds, games + PGN import, teams, matches, committee, announcements, milestones, roles |
 
 Schema: [`supabase/migrations/`](supabase/migrations/). Tables: `profiles`, `players`, `player_private`, `committee_members`, `teams`, `team_members`, `tournaments`, `tournament_entries`, `rounds`, `matches`, `games`, `rating_history`, `announcements`, `milestones`. Views: `tournament_standings` (with Buchholz), `team_standings`, `player_stats`.
 
@@ -133,6 +134,8 @@ Rules in short:
 * **Online (Lichess) games** don't touch the club rating; their `WhiteElo`/`BlackElo` (+ `RatingDiff`) from the PGN are stored on the game and the latest becomes the player's Lichess rating.
 * Players can edit their own profile and private details, register or withdraw themselves while registration is open, and nothing else.
 * Admin rights can only be granted by an existing admin or from the SQL editor.
+* **Games archive:** `games.pgn` is the notation; `games.analysis_pgn` (evals / annotations, uploaded any time) wins in the viewer. Move quality (brilliant … blunder) is derived from the analysis — no engine runs in the browser.
+* **Fixtures** (`src/fixtures.js`): Swiss (score groups, no rematches, colour rules, one bye each), round robin / double (Berger tables), knockout (seeded bracket, byes for top seeds, tiebreak winner on draws), team league, simul; arena/ladder are manual. Rounds are written atomically by the `create_round` / `save_round_pairings` / `delete_round` RPCs; a player can't be paired twice in a round.
 
 ### One-time setup
 1. **Apply the schema.** Either paste `supabase/migrations/*.sql` into the Supabase SQL editor and run it, or:

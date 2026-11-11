@@ -1,9 +1,8 @@
 // "My Club" — the signed-in player's area.
 import { supabase } from './supabase.js';
-import { requireRole, signOut, esc, toast, errText } from './auth.js';
+import { requireRole, showAccount, esc, toast, errText } from './auth.js';
 
 const app = document.getElementById('app');
-document.getElementById('signOut').addEventListener('click', signOut);
 
 const RESULT_FOR = (g, pid) => {
   const white = g.white_id === pid;
@@ -43,8 +42,7 @@ let me;
 
 async function load() {
   me = await requireRole('player');
-  document.getElementById('who').textContent = me.player?.full_name || me.user.email;
-  document.getElementById('adminLink').hidden = me.profile?.role !== 'admin';
+  showAccount(me, location.hash === '#profile' ? 'profile' : 'player');
 
   if (!me.player) {
     app.innerHTML = `<div class="notice error">Your account has no player record yet. Please contact the committee.</div>`;
@@ -78,6 +76,7 @@ async function load() {
     open: open.data || [], entries: entries.data || [], priv: priv.data || {},
   });
   app.setAttribute('aria-busy', 'false');
+  if (location.hash === '#profile') document.getElementById('profile')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function sparkline(history, current, start) {
@@ -169,7 +168,7 @@ function render({ p, s, history, games, open, entries, priv }) {
         }).join('')}</tbody></table></div>` : `<p class="empty">No games recorded yet.</p>`}
     </section>
 
-    <section class="panel" style="margin-top:1.5rem">
+    <section class="panel" style="margin-top:1.5rem" id="profile">
       <h2>My profile</h2>
       <form class="form" id="profileForm">
         <div class="form-grid">
@@ -305,3 +304,4 @@ app.addEventListener('submit', async (e) => {
 });
 
 load();
+addEventListener('hashchange', () => { if (location.hash === '#profile') document.getElementById('profile')?.scrollIntoView({ behavior: 'smooth' }); });
