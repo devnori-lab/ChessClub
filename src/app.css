@@ -196,3 +196,45 @@ dialog.editor .btn-row { justify-content: flex-end; margin-top: 1.5rem; }
 .toast.out { opacity: 0; transform: translateY(6px); }
 
 @media (prefers-reduced-motion: reduce) { .toast, .btn, .field input { transition: none; } }
+
+/* ---- ratings page ------------------------------------------------------ */
+.rating-doc { max-width: 860px; }
+.rating-doc p { line-height: 1.6; color: var(--text-muted); margin: 0 0 0.9rem; }
+.rating-doc p b, .rating-doc li b { color: var(--text); }
+.formula {
+  font-family: var(--font-mono); font-size: clamp(1rem, 2.4vw, 1.3rem); color: var(--text);
+  border-left: 2px solid var(--accent); background: rgba(143, 231, 255, 0.05);
+  padding: 1rem 1.25rem; margin: 0.4rem 0 1.2rem; overflow-x: auto; white-space: nowrap;
+}
+.formula sup { font-size: 0.68em; }
+.defs { display: grid; grid-template-columns: auto 1fr; gap: 0.55rem 1.1rem; margin: 0 0 1rem; }
+.defs dt { font-family: var(--font-mono); color: var(--accent); font-weight: 500; }
+.defs dd { margin: 0; color: var(--text-muted); line-height: 1.5; }
+.plain-list { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.6rem; color: var(--text-muted); line-height: 1.55; }
+.calc-out { font-family: var(--font-mono); font-size: 0.92rem; color: var(--text-muted); margin: 0.2rem 0 0 !important; }
+.calc-out b { color: var(--text); }
+.calc-out .up { color: #8fe7a8; } .calc-out .down { color: #f0a0a0; }
+code { font-family: var(--font-mono); font-size: 0.88em; color: var(--accent); }
+
+/* ---- level survey ------------------------------------------------------ */
+.levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 0.9rem; border: 0; padding: 0; margin: 0; }
+.levels legend { font-family: var(--font-display); font-weight: 600; font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-muted); }
+.level-card { position: relative; display: block; cursor: pointer; }
+.level-card input { position: absolute; opacity: 0; pointer-events: none; }
+.level-card span {
+  display: grid; gap: 0.3rem; height: 100%;
+  border: 1px solid rgba(150, 215, 255, 0.2); background: rgba(143, 231, 255, 0.03);
+  padding: 1rem 1.1rem; transition: border-color 0.2s ease, background 0.2s ease;
+}
+.level-card b { font-family: var(--font-display); font-size: 1.15rem; text-transform: uppercase; color: var(--text); }
+.level-card i { font-style: normal; font-family: var(--font-mono); font-size: 1.4rem; color: var(--accent); }
+.level-card small { color: var(--text-muted); font-size: 0.86rem; line-height: 1.4; }
+.level-card:hover span { border-color: var(--accent-soft); }
+.level-card input:checked + span { border-color: var(--accent); background: rgba(143, 231, 255, 0.1); box-shadow: inset 0 0 0 1px var(--accent); }
+.level-card input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- Google button ----------------------------------------------------- */
+.btn.google { width: 100%; color: var(--text); border-color: rgba(150, 215, 255, 0.35); }
+.btn.google svg { flex: none; }
+.or-rule { display: flex; align-items: center; gap: 0.8rem; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; margin: 1.1rem 0; }
+.or-rule::before, .or-rule::after { content: ''; flex: 1; height: 1px; background: rgba(150, 215, 255, 0.18); }

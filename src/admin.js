@@ -23,16 +23,26 @@ const E = {
   game_source: ['otb', 'lichess', 'chesscom', 'other'],
   team_role: ['captain', 'vice_captain', 'member', 'reserve'],
   app_role: ['player', 'admin'],
+  start_level: ['beginner', 'intermediate', 'professional'],
 };
+const LEVEL_RATING = { beginner: 800, intermediate: 1400, professional: 1600 };
 const GOOD = new Set(['active', 'confirmed', 'completed', 'registration_open', 'ongoing', 'admin', 'true']);
 const WARN = new Set(['pending', 'draft', 'waitlist', 'scheduled', 'postponed', 'registration_closed']);
 const BAD = new Set(['rejected', 'cancelled', 'inactive', 'withdrawn']);
 const badge = (v) => `<span class="badge ${GOOD.has(String(v)) ? 'good' : WARN.has(String(v)) ? 'warn' : BAD.has(String(v)) ? 'bad' : ''}">${esc(String(v).replace(/_/g, ' '))}</span>`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const signed = (n) => `${n > 0 ? '+' : ''}${n}`;
+// Offline games show the club-rating change; Lichess games the players' Lichess rating.
+const sideRating = (r, side) => {
+  const lr = r[`${side}_lichess_rating`], lc = r[`${side}_lichess_change`], cc = r[`${side}_rating_change`];
+  if (r.source === 'lichess' && lr != null) return `<span class="muted">L ${lr}${lc != null ? ` ${signed(lc)}` : ''}</span>`;
+  return cc != null ? `<span class="muted">${signed(cc)}</span>` : '';
+};
+const one = (v) => (Array.isArray(v) ? v[0] : v) || {};
 
 // ---- foreign-key option lists ------------------------------------------
 const LOOKUPS = {
-  players: { select: 'id, full_name, status, is_external', order: 'full_name', label: (r) => `${r.full_name}${r.is_external ? ' (ext)' : r.status !== 'active' ? ` (${r.status})` : ''}` },
+  players: { select: 'id, full_name, status, is_external, lichess_username', order: 'full_name', label: (r) => `${r.full_name}${r.is_external ? ' (ext)' : r.status !== 'active' ? ` (${r.status})` : ''}`, extra: (r) => ({ lichess: r.lichess_username }) },
   tournaments: { select: 'id, name, starts_on', order: 'starts_on', desc: true, label: (r) => r.name },
   teams: { select: 'id, name, season', order: 'name', label: (r) => `${r.name}${r.season ? ` · ${r.season}` : ''}` },
   rounds: { select: 'id, number, tournament:tournaments(name)', order: 'number', label: (r) => `${r.tournament?.name || '?'} · R${r.number}` },
@@ -44,7 +54,7 @@ async function lookup(name, fresh = false) {
   const L = LOOKUPS[name];
   const { data, error } = await supabase.from(name).select(L.select).order(L.order, { ascending: !L.desc, nullsFirst: false });
   if (error) { toast(errText(error), 'error'); return []; }
-  return (lookupCache[name] = data.map((r) => ({ id: r.id, label: L.label(r) })));
+  return (lookupCache[name] = data.map((r) => ({ id: r.id, label: L.label(r), ...(L.extra ? L.extra(r) : {}) })));
 }
 const labelOf = (name, id) => (lookupCache[name] || []).find((o) => o.id === id)?.label ?? '—';
 
@@ -66,26 +76,34 @@ const SECTIONS = {
 
   players: {
     title: 'Players', table: 'players', order: 'full_name',
-    select: '*, private:player_private(email, phone, roll_number)',
+    select: '*, private:player_private(*)',
     search: ['full_name', 'department', 'college', 'lichess_username'],
-    filters: [{ key: 'status', label: 'All statuses', opts: E.player_status }],
+    filters: [{ key: 'status', label: 'All statuses', opts: E.player_status }, { key: 'start_level', label: 'All levels', opts: E.start_level }],
     columns: [
-      { label: 'Name', html: (r) => `<b>${esc(r.full_name)}</b>${r.is_external ? ` <span class="muted">· ${esc(r.college || 'external')}</span>` : ''}<br><span class="muted">${esc(r.private?.email || '')}</span>` },
+      { label: 'Name', html: (r) => `<b>${esc(r.full_name)}</b>${r.is_external ? ' <span class="badge">ext</span>' : ''}<br><span class="muted">${esc(r.private?.email || '')}</span>` },
+      { label: 'College', html: (r) => esc([r.college, r.department, r.batch_year].filter(Boolean).join(' · ')) },
       { label: 'Status', html: (r) => badge(r.status) },
-      { label: 'Rating', num: true, html: (r) => r.club_rating },
-      { label: 'Games', num: true, html: (r) => r.club_games },
-      { label: 'Dept / batch', html: (r) => esc([r.department, r.batch_year].filter(Boolean).join(' · ')) },
+      { label: 'Level', html: (r) => (r.start_level ? `${esc(r.start_level)} <span class="muted">${r.start_rating}</span>` : '<span class="muted">—</span>') },
+      { label: 'Club', num: true, html: (r) => `${r.club_rating} <span class="muted">${r.club_games}g</span>` },
+      { label: 'Lichess', num: true, html: (r) => (r.lichess_rating ?? (r.lichess_username ? '<span class="muted">—</span>' : '')) },
     ],
     rowActions: (r) => (r.status === 'pending' ? `<button class="btn sm" data-quick="approve" data-id="${r.id}">Approve</button>` : ''),
     fields: [
       F.text('full_name', 'Full name', { required: true }), F.enm('status', 'Status', E.player_status),
-      F.bool('is_external', 'External (other college / guest)'), F.text('college', 'College (external)'),
+      F.bool('is_external', 'External (other university / guest)'),
+      F.text('college', 'College', { hint: 'Constituent college, or the other institution for external players' }),
       F.text('department', 'Department'), F.text('programme', 'Programme'), F.num('batch_year', 'Batch year'),
       F.date('joined_on', 'Joined on'),
-      F.text('lichess_username', 'Lichess'), F.text('chesscom_username', 'Chess.com'),
+      F.enm('start_level', 'Starting level', E.start_level, { blank: true, hint: 'Beginner 800 · Intermediate 1400 · Professional 1600' }),
+      F.num('start_rating', 'Starting rating', { hint: 'Filled from the level; type a number to override. All ratings are recalculated.' }),
+      F.text('lichess_username', 'Lichess username'), F.text('chesscom_username', 'Chess.com'),
       F.text('fide_id', 'FIDE ID'), F.num('fide_rating', 'FIDE rating'),
       F.text('photo_url', 'Photo URL'), F.area('bio', 'Bio'),
+      F.text('email', 'Contact email', { priv: true }), F.text('phone', 'Phone', { priv: true }),
+      F.text('roll_number', 'Roll number', { priv: true }), F.date('date_of_birth', 'Date of birth', { priv: true }),
+      F.area('notes', 'Committee notes (private)', { priv: true }),
     ],
+    readonly: (r) => `Club rating <b>${r.club_rating}</b> (peak ${r.peak_rating}, ${r.club_games} rated games)${r.lichess_rating != null ? ` · Lichess <b>${r.lichess_rating}</b>` : ''} — calculated from games, not edited here.`,
   },
 
   tournaments: {
@@ -157,9 +175,9 @@ const SECTIONS = {
     toolbarExtra: `<button class="btn sm ghost" data-quick="recompute">Recompute ratings</button>`,
     columns: [
       { label: 'Date', html: (r) => fmtDate(r.played_at) },
-      { label: 'White', html: (r) => `${esc(r.white?.full_name)}${r.white_rating_change != null ? ` <span class="muted">${r.white_rating_change > 0 ? '+' : ''}${r.white_rating_change}</span>` : ''}` },
-      { label: 'Result', html: (r) => `<b>${esc(r.result)}</b>` },
-      { label: 'Black', html: (r) => `${esc(r.black?.full_name)}${r.black_rating_change != null ? ` <span class="muted">${r.black_rating_change > 0 ? '+' : ''}${r.black_rating_change}</span>` : ''}` },
+      { label: 'White', html: (r) => `${esc(r.white?.full_name)} ${sideRating(r, 'white')}` },
+      { label: 'Result', html: (r) => `<b>${esc(r.result)}</b><br><span class="muted">${r.source === 'otb' ? 'offline' : esc(r.source)}</span>` },
+      { label: 'Black', html: (r) => `${esc(r.black?.full_name)} ${sideRating(r, 'black')}` },
       { label: 'Event', html: (r) => `${esc(r.tournament?.name || 'Friendly')}${r.is_featured ? ' <span class="badge good">featured</span>' : ''}${r.pgn ? ' <span class="badge">pgn</span>' : ''}` },
     ],
     defaults: { result: '*', source: 'otb', rated: true, is_public: true },
@@ -172,7 +190,10 @@ const SECTIONS = {
       F.fk('tournament_id', 'Tournament', 'tournaments'), F.fk('round_id', 'Round', 'rounds'),
       F.fk('match_id', 'Team match', 'matches'), F.num('board', 'Board'),
       F.text('eco', 'ECO', { maxlength: 3 }), F.text('opening', 'Opening'), F.num('move_count', 'Moves'),
-      F.enm('source', 'Source', E.game_source), F.text('external_url', 'Link (Lichess / Chess.com)'),
+      F.enm('source', 'Source', E.game_source, { hint: 'otb = offline: counts for the club rating. Online games don’t.' }),
+      F.text('external_url', 'Link (Lichess / Chess.com)'),
+      F.num('white_lichess_rating', 'White Lichess rating', { hint: 'From PGN WhiteElo' }), F.num('white_lichess_change', 'White Lichess change'),
+      F.num('black_lichess_rating', 'Black Lichess rating', { hint: 'From PGN BlackElo' }), F.num('black_lichess_change', 'Black Lichess change'),
       F.bool('rated', 'Rated'), F.bool('is_public', 'Public'), F.bool('is_featured', 'Featured in archive'),
       F.area('notes', 'Notes / annotations'),
     ],
@@ -204,12 +225,13 @@ const SECTIONS = {
     columns: [
       { label: 'Team', html: (r) => `<b>${esc(r.name)}</b>${r.short_name ? ` <span class="muted">${esc(r.short_name)}</span>` : ''}` },
       { label: 'Season', html: (r) => esc(r.season || '') },
-      { label: 'Type', html: (r) => (r.is_external ? `<span class="badge">${esc(r.college || 'external')}</span>` : '<span class="badge good">club</span>') },
+      { label: 'College', html: (r) => esc(r.college || '') },
+      { label: 'Type', html: (r) => (r.is_external ? '<span class="badge">external</span>' : '<span class="badge good">internal</span>') },
       { label: 'Captain', html: (r) => esc(r.captain?.full_name || '') },
     ],
     fields: [
       F.text('name', 'Name', { required: true }), F.text('short_name', 'Short name'), F.text('season', 'Season', { hint: 'e.g. 2026-27' }),
-      F.bool('is_external', 'Another college’s team'), F.text('college', 'College'),
+      F.bool('is_external', 'Another university’s team'), F.text('college', 'College', { hint: 'e.g. College of Technology — or the other institution' }),
       F.fk('captain_id', 'Captain', 'players'), F.text('logo_url', 'Logo URL'), F.area('description', 'Description'),
     ],
   },
@@ -261,7 +283,10 @@ const SECTIONS = {
   },
 
   accounts: {
-    title: 'Accounts & roles', table: 'profiles', order: 'created_at', desc: true, noCreate: true, noDelete: true,
+    title: 'Accounts & roles', table: 'profiles', order: 'created_at', desc: true, noCreate: true,
+    deleteRpc: { fn: 'admin_delete_account', arg: 'target',
+      confirm: 'Delete this login? They will no longer be able to sign in. If they have recorded games, their player record and history stay (marked inactive); otherwise it is removed too.',
+      done: { kept_player: 'Account deleted. Player record kept for game history.', deleted_player: 'Account and player record deleted.', deleted: 'Account deleted.' } },
     select: '*, player:players(full_name, private:player_private(email))',
     columns: [
       { label: 'Account', html: (r) => { const pl = Array.isArray(r.player) ? r.player[0] : r.player;
@@ -269,7 +294,9 @@ const SECTIONS = {
       { label: 'Role', html: (r) => badge(r.role) },
       { label: 'Joined', html: (r) => fmtDate(r.created_at) },
     ],
-    fields: [F.text('display_name', 'Display name'), F.enm('role', 'Role', E.app_role, { hint: 'Admins can manage everything on this site.' })],
+    fields: [F.text('display_name', 'Display name'), F.enm('role', 'Role', E.app_role, { hint: 'Admins can manage everything on this site.' }),
+      F.text('avatar_url', 'Avatar URL')],
+    readonly: () => 'Player details (name, college, level, contact) are edited under <b>Players</b>.',
   },
 };
 
@@ -420,10 +447,16 @@ function fieldHtml(f, v) {
 function openEditor(key, row) {
   const s = SECTIONS[key];
   const rec = row || { ...(s.defaults || {}) };
+  const priv = one(rec.private);
+  const valueOf = (f) => (f.priv ? priv[f.key] : rec[f.key]);
+  const main = s.fields.filter((f) => !f.priv), privFields = s.fields.filter((f) => f.priv);
   dialog.innerHTML = `
     <form method="dialog" id="edForm">
       <h3>${row ? 'Edit' : 'New'} · ${esc(s.title)}</h3>
-      <div class="form-grid">${s.fields.map((f) => fieldHtml(f, rec[f.key])).join('')}</div>
+      ${row && s.readonly ? `<p class="muted" style="margin:-.4rem 0 1rem">${s.readonly(row)}</p>` : ''}
+      <div class="form-grid">${main.map((f) => fieldHtml(f, valueOf(f))).join('')}</div>
+      ${privFields.length ? `<p class="eyebrow-sm" style="margin:1.2rem 0 .6rem">Private — visible to the player and admins only</p>
+        <div class="form-grid">${privFields.map((f) => fieldHtml(f, valueOf(f))).join('')}</div>` : ''}
       <div class="btn-row">
         ${s.pgnImport ? `<button type="button" class="btn ghost" data-pgn style="margin-right:auto">Fill from PGN</button>` : ''}
         ${row && !s.noDelete ? `<button type="button" class="btn danger" data-del>Delete</button>` : ''}
@@ -434,32 +467,47 @@ function openEditor(key, row) {
   const form = dialog.querySelector('form');
   form.querySelector('[data-cancel]').onclick = () => dialog.close();
   if (s.pgnImport) form.querySelector('[data-pgn]').onclick = () => fillFromPgn(form);
+  // Picking a level shows its rating straight away (the database does the same).
+  if (form.elements.start_level && form.elements.start_rating) {
+    form.elements.start_level.addEventListener('change', (e) => {
+      if (LEVEL_RATING[e.target.value]) form.elements.start_rating.value = LEVEL_RATING[e.target.value];
+    });
+  }
   const del = form.querySelector('[data-del]');
   if (del) del.onclick = async () => {
-    if (!confirm('Delete this record? This cannot be undone.')) return;
-    const { error } = await supabase.from(s.table).delete().eq('id', row.id);
-    if (error) { toast(errText(error), 'error'); return; }
-    dialog.close(); toast('Deleted.'); afterWrite(s);
+    if (!confirm(s.deleteRpc?.confirm || 'Delete this record? This cannot be undone.')) return;
+    const { data, error } = s.deleteRpc
+      ? await supabase.rpc(s.deleteRpc.fn, { [s.deleteRpc.arg]: row.id })
+      : await supabase.from(s.table).delete().eq('id', row.id);
+    if (error) {
+      toast(error.code === '23503' ? 'This is still used elsewhere (e.g. in recorded games), so it can’t be deleted. Mark it inactive instead.' : errText(error), 'error');
+      return;
+    }
+    dialog.close(); toast(s.deleteRpc?.done?.[data] || 'Deleted.'); afterWrite(s);
   };
   form.onsubmit = async (e) => {
     e.preventDefault();
-    const payload = {};
+    const payload = {}, privPayload = {};
     for (const f of s.fields) {
       const el = form.elements[f.key];
-      if (f.type === 'bool') { payload[f.key] = el.checked; continue; }
+      const out = f.priv ? privPayload : payload;
+      if (f.type === 'bool') { out[f.key] = el.checked; continue; }
       const raw = el.value.trim();
-      if (raw === '') payload[f.key] = null;
-      else if (f.type === 'number') payload[f.key] = Number(raw);
-      else if (f.type === 'datetime') payload[f.key] = new Date(raw).toISOString();
-      else payload[f.key] = raw;
+      if (raw === '') out[f.key] = null;
+      else if (f.type === 'number') out[f.key] = Number(raw);
+      else if (f.type === 'datetime') out[f.key] = new Date(raw).toISOString();
+      else out[f.key] = raw;
     }
     if (!row && s.table === 'games') payload.created_by = me.user.id;
     if (!row && s.table === 'tournaments') payload.created_by = me.user.id;
     const btn = form.querySelector('[type="submit"]');
     btn.disabled = true;
-    const { error } = row
-      ? await supabase.from(s.table).update(payload).eq('id', row.id)
-      : await supabase.from(s.table).insert(payload);
+    let { data: saved, error } = row
+      ? await supabase.from(s.table).update(payload).eq('id', row.id).select('id').single()
+      : await supabase.from(s.table).insert(payload).select('id').single();
+    if (!error && privFields.length) {
+      ({ error } = await supabase.from('player_private').upsert({ player_id: saved.id, ...privPayload }));
+    }
     btn.disabled = false;
     if (error) { toast(errText(error), 'error'); return; }
     dialog.close(); toast('Saved.'); afterWrite(s);
@@ -482,6 +530,8 @@ function fillFromPgn(form) {
   const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
   const findPlayer = (name) => {
     if (!name) return null;
+    const byLichess = players.find((p) => p.lichess && p.lichess.toLowerCase() === name.trim().toLowerCase());
+    if (byLichess) return byLichess;
     const n = norm(name.includes(',') ? name.split(',').reverse().join(' ') : name);
     return players.find((p) => norm(p.label.replace(/\s*\(.*\)$/, '')) === n) || null;
   };
@@ -504,19 +554,30 @@ function fillFromPgn(form) {
     form.elements.external_url.value = site;
     form.elements.source.value = site.includes('lichess') ? 'lichess' : site.includes('chess.com') ? 'chesscom' : 'other';
   }
+  const isLichess = form.elements.source.value === 'lichess' || /lichess\.org/.test(pgn);
+  if (isLichess) {
+    form.elements.source.value = 'lichess';
+    for (const side of ['white', 'black']) {
+      const cap = side[0].toUpperCase() + side.slice(1);
+      const elo = tag(`${cap}Elo`), diff = tag(`${cap}RatingDiff`);
+      if (elo && /^\d+$/.test(elo)) form.elements[`${side}_lichess_rating`].value = elo;
+      if (diff && /^[+-]?\d+$/.test(diff)) form.elements[`${side}_lichess_change`].value = Number(diff);
+    }
+  }
   const moves = pgn.replace(/\[[^\]]*\]/g, '').replace(/\{[^}]*\}/g, '').match(/\b\d+\.(?!\.)/g);
   if (moves) form.elements.move_count.value = moves.length;
   const term = (tag('Termination') || '').toLowerCase();
   const termMap = { normal: '', 'time forfeit': 'timeout', abandoned: 'abandoned' };
   if (term in termMap && termMap[term]) form.elements.termination.value = termMap[term];
-  toast(missing.length ? `Filled. Not found in players: ${missing.join(', ')} — add them first or pick manually.` : 'Filled from PGN.', missing.length ? 'error' : 'ok');
+  toast(missing.length ? `Filled. Not found in players: ${missing.join(', ')} — add them first (or set their Lichess username) or pick manually.` : 'Filled from PGN.', missing.length ? 'error' : 'ok');
 }
 
 // ---- overview ----------------------------------------------------------
 async function renderOverview() {
   view.innerHTML = `<p class="empty">Loading overview…</p>`;
   const [pending, entries, upcoming, counts] = await Promise.all([
-    supabase.from('players').select('id, full_name, created_at, private:player_private(email)').eq('status', 'pending').order('created_at'),
+    supabase.from('players').select('id, full_name, status, college, start_level, start_rating, created_at, private:player_private(email)')
+      .not('profile_id', 'is', null).order('created_at', { ascending: false }).limit(8),
     supabase.from('tournament_entries').select('id, status, player:players(full_name, club_rating), tournament:tournaments(name)').eq('status', 'pending').order('registered_at'),
     supabase.from('tournaments').select('id, name, status, starts_on, is_published').in('status', ['draft', 'registration_open', 'registration_closed', 'ongoing']).order('starts_on', { nullsFirst: false }),
     Promise.all(['players', 'games', 'tournaments', 'teams'].map((t) => supabase.from(t).select('id', { count: 'exact', head: true }))),
@@ -533,11 +594,12 @@ async function renderOverview() {
       <div class="stat"><b>${nteams}</b><span>Teams</span></div>
     </div>
     <div class="grid-2">
-      <section class="panel"><h2>Waiting for approval <button class="btn sm ghost" data-goto="players">All players</button></h2>
+      <section class="panel"><h2>Newest members <button class="btn sm ghost" data-goto="players">All players</button></h2>
         ${pending.data?.length ? `<div class="table-wrap"><table class="data-table"><tbody>${pending.data.map((p) => `<tr>
-          <td><b>${esc(p.full_name)}</b><br><span class="muted">${esc(p.private?.email || '')} · ${fmtDate(p.created_at)}</span></td>
-          <td class="actions"><button class="btn sm" data-quick="approve" data-id="${p.id}">Approve</button></td></tr>`).join('')}</tbody></table></div>`
-          : `<p class="empty">No one waiting.</p>`}
+          <td><b>${esc(p.full_name)}</b><br><span class="muted">${esc([one(p.private).email, p.college].filter(Boolean).join(' · '))} · ${fmtDate(p.created_at)}</span></td>
+          <td>${p.start_level ? `${esc(p.start_level)} <span class="muted">${p.start_rating}</span>` : '<span class="muted">no level yet</span>'}</td>
+          <td class="actions">${p.status === 'pending' ? `<button class="btn sm" data-quick="approve" data-id="${p.id}">Approve</button>` : badge(p.status)}</td></tr>`).join('')}</tbody></table></div>`
+          : `<p class="empty">No members yet.</p>`}
       </section>
       <section class="panel"><h2>Entries to confirm <button class="btn sm ghost" data-goto="entries">All entries</button></h2>
         ${entries.data?.length ? `<div class="table-wrap"><table class="data-table"><tbody>${entries.data.map((e) => `<tr>

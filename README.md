@@ -119,15 +119,18 @@ The anon key in the frontend is public by design; never put the `service_role` k
 | Page | Who | What |
 |---|---|---|
 | `index.html` | everyone | 3D landing page + public club info |
-| `login.html` | everyone | sign in · create account · reset password; forwards to the right area |
-| `player.html` | players | rating & graph, register/withdraw for tournaments, my games, profile |
-| `admin.html` | admins | players (approve), tournaments, entries, rounds, games + PGN import, teams, matches, committee, announcements, milestones, roles |
+| `login.html` | everyone | Google or email sign-in · create account · reset password; forwards to the right area |
+| `ratings.html` | everyone | how the club rating works, with a calculator |
+| `player.html` | players | first-visit level survey, club + Lichess rating & graph, register/withdraw, my games, profile |
+| `admin.html` | admins | players (all details, levels), accounts (roles, delete), tournaments, entries, rounds, games + PGN import, teams, matches, committee, announcements, milestones, roles |
 
 Schema: [`supabase/migrations/`](supabase/migrations/). Tables: `profiles`, `players`, `player_private`, `committee_members`, `teams`, `team_members`, `tournaments`, `tournament_entries`, `rounds`, `matches`, `games`, `rating_history`, `announcements`, `milestones`. Views: `tournament_standings` (with Buchholz), `team_standings`, `player_stats`.
 
 Rules in short:
-* New sign-ups get a **pending** player record; an admin approves them before they can enter tournaments.
-* **Club rating** is Elo (start 1200, K 40 for the first 30 games, then 20), replayed from all rated games whenever a game is added, edited or deleted.
+* Anyone can sign up (Google or email) and is an **active** player straight away. Admins can edit every detail and delete accounts.
+* On first visit a player picks a level that sets their **starting rating**: beginner 800 · intermediate 1400 · professional 1600. They can change it until their first rated game; after that only admins can.
+* **Club rating** is Elo (K 40 for the first 30 games, then 20) over rated **offline** (`source = otb/other`) games only, replayed from the start whenever a game or a starting rating changes. Explained on `ratings.html`.
+* **Online (Lichess) games** don't touch the club rating; their `WhiteElo`/`BlackElo` (+ `RatingDiff`) from the PGN are stored on the game and the latest becomes the player's Lichess rating.
 * Players can edit their own profile and private details, register or withdraw themselves while registration is open, and nothing else.
 * Admin rights can only be granted by an existing admin or from the SQL editor.
 
@@ -139,8 +142,12 @@ Rules in short:
    supabase db push
    ```
 2. **Auth URLs** (Dashboard → Authentication → URL Configuration): Site URL `https://devnori-lab.github.io/ChessClub/`, and add redirect URLs `https://devnori-lab.github.io/ChessClub/**` and `http://localhost:5173/ChessClub/**`.
-3. **Keys.** Copy `.env.example` to `.env` with the Project URL and the anon/publishable key (Dashboard → Project Settings → API). Add the same two values as GitHub repo secrets `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Settings → Secrets and variables → Actions) so the deploy build gets them.
-4. **First admin.** Sign up on the site, then in the SQL editor:
+3. **Google sign-in.**
+   1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → OAuth consent screen: set it up (External, app name, support email).
+   2. Credentials → Create credentials → OAuth client ID → *Web application*. Authorised JavaScript origin `https://devnori-lab.github.io`; authorised redirect URI: the **Callback URL** shown in Supabase → Authentication → Sign In / Providers → Google (`https://<ref>.supabase.co/auth/v1/callback`).
+   3. Paste the Client ID and Client secret into that Supabase Google provider page and enable it.
+4. **Keys.** Copy `.env.example` to `.env` with the Project URL and the anon/publishable key (Dashboard → Project Settings → API). Add the same two values as GitHub repo secrets `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Settings → Secrets and variables → Actions) so the deploy build gets them.
+5. **First admin.** Sign up on the site, then in the SQL editor:
    ```sql
    update public.profiles set role = 'admin'
     where id = (select id from auth.users where email = 'you@example.com');

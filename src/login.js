@@ -8,6 +8,8 @@ const notice = $('authNotice');
 function showPane(name) {
   panes.forEach((p) => { p.hidden = p.dataset.pane !== name; });
   $('authTabs').hidden = name === 'forgot' || name === 'reset';
+  $('oauthBlock').hidden = name === 'forgot' || name === 'reset';
+  $('googleLabel').textContent = name === 'signup' ? 'Sign up with Google' : 'Continue with Google';
   document.querySelectorAll('#authTabs [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   const titles = { signin: 'Sign in', signup: 'Create account', forgot: 'Reset password', reset: 'Choose a new password' };
   $('authTitle').textContent = titles[name];
@@ -49,6 +51,27 @@ if (!isConfigured) {
   document.querySelectorAll('form button, form input').forEach((el) => { el.disabled = true; });
 } else {
   const redirectTo = `${location.origin}${PAGES.login}`;
+
+  // Google: Supabase sends the user to Google and back to this page, where
+  // the session is picked up from the URL and goHome() routes them.
+  $('googleBtn').addEventListener('click', async () => {
+    $('googleBtn').disabled = true;
+    say('');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo, queryParams: { prompt: 'select_account' } },
+    });
+    if (error) {
+      $('googleBtn').disabled = false;
+      say(/provider is not enabled|Unsupported provider/i.test(error.message)
+        ? 'Google sign-in isn’t switched on yet — please use email for now.' : errText(error), 'error');
+    }
+  });
+
+  // Errors come back in the URL (e.g. the user cancelled at Google).
+  const urlErr = new URLSearchParams(location.hash.slice(1)).get('error_description')
+    || new URLSearchParams(location.search).get('error_description');
+  if (urlErr) say(urlErr.replace(/\+/g, ' '), 'error');
 
   $('signinForm').addEventListener('submit', (e) => {
     e.preventDefault();

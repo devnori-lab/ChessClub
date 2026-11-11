@@ -137,6 +137,8 @@ body.nav-locked { overflow: hidden; }
   max-width: 640px;
   margin: 0 0 3.25rem;
 }
+.lede-link { color: var(--accent); white-space: nowrap; border-bottom: 1px solid var(--accent-dim); }
+.lede-link:hover { border-bottom-color: var(--accent); }
 
 /* Without backdrop-filter, fall back to near-opaque panels for legibility. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

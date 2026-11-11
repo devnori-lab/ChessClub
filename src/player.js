@@ -19,6 +19,26 @@ const RESULT_FOR = (g, pid) => {
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const tc = (t) => (t.time_control_base_min != null ? `${t.time_control_base_min}+${t.time_control_increment_s}` : '');
 
+const BASE = import.meta.env.BASE_URL;
+const LEVELS = [
+  { key: 'beginner', label: 'Beginner', rating: 800, blurb: 'You know how the pieces move and play casually.' },
+  { key: 'intermediate', label: 'Intermediate', rating: 1400, blurb: 'You play regularly and know basic openings and tactics.' },
+  { key: 'professional', label: 'Professional', rating: 1600, blurb: 'You play rated tournaments or have a strong online rating.' },
+];
+const PRO_WARNING = 'Professional starts you at 1600 — you’ll be paired against our top players from your very first game. Choose it only if you play rated chess regularly.';
+// Constituent colleges, offered as suggestions (any text is accepted).
+const COLLEGES = ['College of Technology', 'College of Agriculture', 'College of Basic Sciences & Humanities',
+  'College of Veterinary & Animal Sciences', 'College of Fisheries', 'College of Community Science',
+  'College of Agribusiness Management', 'College of Post Graduate Studies'];
+const collegeList = `<datalist id="colleges">${COLLEGES.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`;
+const levelCards = (current) => `
+  <fieldset class="levels">
+    <legend>How well do you play?</legend>
+    ${LEVELS.map((l) => `<label class="level-card"><input type="radio" name="level" value="${l.key}" required${current === l.key ? ' checked' : ''}>
+      <span><b>${l.label}</b><i>${l.rating}</i><small>${l.blurb}</small></span></label>`).join('')}
+  </fieldset>
+  <div class="notice warn" data-pro-warning hidden>${PRO_WARNING}</div>`;
+
 let me;
 
 async function load() {
@@ -31,6 +51,11 @@ async function load() {
     return;
   }
   const pid = me.player.id;
+  if (!me.player.start_level && !me.player.is_external) {
+    renderOnboarding(me.player);
+    app.setAttribute('aria-busy', 'false');
+    return;
+  }
 
   const [stats, history, games, open, entries, priv] = await Promise.all([
     supabase.from('player_stats').select('*').eq('player_id', pid).maybeSingle(),
@@ -55,9 +80,9 @@ async function load() {
   app.setAttribute('aria-busy', 'false');
 }
 
-function sparkline(history, current) {
-  const pts = [1200, ...history.map((h) => h.rating_after)];
-  if (pts.length < 2) return `<p class="empty">Your rating graph appears after your first rated game. Everyone starts at 1200.</p>`;
+function sparkline(history, current, start) {
+  const pts = [start, ...history.map((h) => h.rating_after)];
+  if (pts.length < 2) return `<p class="empty">Your rating graph appears after your first rated over-the-board game. You start at ${start}. <a class="link-btn" href="${BASE}ratings.html">How ratings work</a></p>`;
   const w = 600, h = 120, pad = 8;
   const min = Math.min(...pts) - 10, max = Math.max(...pts) + 10;
   const x = (i) => pad + (i / (pts.length - 1)) * (w - pad * 2);
@@ -84,19 +109,20 @@ function render({ p, s, history, games, open, entries, priv }) {
   app.innerHTML = `
     <p class="eyebrow-sm">My Club</p>
     <h1 class="page-title">${esc(p.full_name)}</h1>
-    <p class="page-sub">${esc([p.department, p.batch_year && `Batch ${p.batch_year}`].filter(Boolean).join(' · ') || 'Member')}
+    <p class="page-sub">${esc([p.college, p.department, p.batch_year && `Batch ${p.batch_year}`].filter(Boolean).join(' · ') || 'Member')}
       &nbsp;<span class="badge ${active ? 'good' : 'warn'}">${esc(p.status)}</span></p>
     ${statusNote}
 
     <div class="stat-row">
       <div class="stat"><b>${p.club_rating}</b><span>Club rating</span></div>
       <div class="stat"><b>${p.peak_rating}</b><span>Peak</span></div>
+      <div class="stat"><b>${p.lichess_rating ?? '—'}</b><span>Lichess${p.lichess_username ? ' · ' + esc(p.lichess_username) : ''}</span></div>
       <div class="stat"><b>${s.games ?? 0}</b><span>Games</span></div>
       <div class="stat"><b>${s.wins ?? 0}/${s.draws ?? 0}/${s.losses ?? 0}</b><span>W / D / L</span></div>
       <div class="stat"><b>${s.score_pct != null ? s.score_pct + '%' : '—'}</b><span>Score</span></div>
     </div>
 
-    <section class="panel"><h2>Rating</h2>${sparkline(history, p.club_rating)}</section>
+    <section class="panel"><h2>Club rating <a class="btn sm ghost" href="${BASE}ratings.html">How it works</a></h2>${sparkline(history, p.club_rating, p.start_rating ?? 1200)}</section>
 
     <div class="grid-2" style="margin-top:1.5rem">
       <section class="panel">
@@ -148,6 +174,7 @@ function render({ p, s, history, games, open, entries, priv }) {
       <form class="form" id="profileForm">
         <div class="form-grid">
           <div class="field"><label for="f_full_name">Full name</label><input id="f_full_name" name="full_name" required maxlength="80" value="${esc(p.full_name)}"></div>
+          <div class="field"><label for="f_college">College</label><input id="f_college" name="college" list="colleges" value="${esc(p.college)}"></div>
           <div class="field"><label for="f_department">Department</label><input id="f_department" name="department" value="${esc(p.department)}"></div>
           <div class="field"><label for="f_programme">Programme</label><input id="f_programme" name="programme" placeholder="B.Tech, M.Sc…" value="${esc(p.programme)}"></div>
           <div class="field"><label for="f_batch_year">Batch year</label><input id="f_batch_year" name="batch_year" type="number" min="1950" max="2100" value="${esc(p.batch_year)}"></div>
@@ -155,6 +182,11 @@ function render({ p, s, history, games, open, entries, priv }) {
           <div class="field"><label for="f_chesscom">Chess.com username</label><input id="f_chesscom" name="chesscom_username" value="${esc(p.chesscom_username)}"></div>
           <div class="field"><label for="f_fide_id">FIDE ID</label><input id="f_fide_id" name="fide_id" value="${esc(p.fide_id)}"></div>
           <div class="field"><label for="f_fide_rating">FIDE rating</label><input id="f_fide_rating" name="fide_rating" type="number" min="0" max="3500" value="${esc(p.fide_rating)}"></div>
+          <div class="field"><label for="f_level">Starting level</label>
+            ${p.club_games > 0
+              ? `<input id="f_level" value="${esc(LEVELS.find((l) => l.key === p.start_level)?.label ?? 'Set by committee')} · ${p.start_rating ?? '—'}" disabled><span class="hint">Locked after your first rated game.</span>`
+              : `<select id="f_level" name="level">${LEVELS.map((l) => `<option value="${l.key}"${l.key === p.start_level ? ' selected' : ''}>${l.label} · ${l.rating}</option>`).join('')}</select>`}
+          </div>
           <div class="field wide"><label for="f_bio">About you</label><textarea id="f_bio" name="bio" maxlength="600">${esc(p.bio)}</textarea></div>
         </div>
         <p class="eyebrow-sm" style="margin-top:.5rem">Private — only you and the committee see these</p>
@@ -165,6 +197,7 @@ function render({ p, s, history, games, open, entries, priv }) {
         </div>
         <div class="btn-row"><button class="btn primary" type="submit">Save profile</button></div>
       </form>
+      ${collegeList}
     </section>`;
 }
 
@@ -201,7 +234,7 @@ app.addEventListener('submit', async (e) => {
   btn.disabled = true;
   const [a, b] = await Promise.all([
     supabase.from('players').update({
-      full_name: val('full_name'), department: val('department'), programme: val('programme'), batch_year: num('batch_year'),
+      full_name: val('full_name'), college: val('college'), department: val('department'), programme: val('programme'), batch_year: num('batch_year'),
       lichess_username: val('lichess_username'), chesscom_username: val('chesscom_username'),
       fide_id: val('fide_id'), fide_rating: num('fide_rating'), bio: val('bio'),
     }).eq('id', me.player.id),
@@ -209,10 +242,65 @@ app.addEventListener('submit', async (e) => {
       player_id: me.player.id, phone: val('phone'), roll_number: val('roll_number'), date_of_birth: val('date_of_birth'),
     }),
   ]);
+  let c = {};
+  const lvl = val('level');
+  if (!a.error && lvl && lvl !== me.player.start_level) c = await supabase.rpc('choose_start_level', { chosen: lvl });
+  btn.disabled = false;
+  const error = a.error || b.error || c.error;
+  if (error) { toast(errText(error), 'error'); return; }
+  toast('Profile saved.');
+  load();
+});
+
+// ---- first visit: the level survey -------------------------------------
+function renderOnboarding(p) {
+  app.innerHTML = `
+    <div class="auth-wrap" style="max-width:760px">
+      <p class="eyebrow-sm">Welcome to the club</p>
+      <h1 class="page-title">One quick question</h1>
+      <p class="page-sub">Your answer sets your starting club rating. After that, it moves with every rated over-the-board game you play.
+        <a class="link-btn" href="${BASE}ratings.html" target="_blank" rel="noopener">How ratings work ↗</a></p>
+      <section class="panel">
+        <form class="form" id="onboardForm">
+          ${levelCards(null)}
+          <div class="form-grid" style="margin-top:.5rem">
+            <div class="field"><label for="o_full_name">Full name</label><input id="o_full_name" name="full_name" required maxlength="80" value="${esc(p.full_name)}"></div>
+            <div class="field"><label for="o_college">College</label><input id="o_college" name="college" list="colleges" placeholder="e.g. College of Technology" value="${esc(p.college)}"></div>
+            <div class="field"><label for="o_department">Department</label><input id="o_department" name="department" value="${esc(p.department)}"></div>
+            <div class="field"><label for="o_batch_year">Batch year</label><input id="o_batch_year" name="batch_year" type="number" min="1950" max="2100" value="${esc(p.batch_year)}"></div>
+            <div class="field"><label for="o_lichess">Lichess username <span class="muted">(optional)</span></label><input id="o_lichess" name="lichess_username" value="${esc(p.lichess_username)}">
+              <span class="hint">Used to match your online games and show your Lichess rating.</span></div>
+          </div>
+          <div class="btn-row"><button class="btn primary" type="submit">Start playing</button></div>
+        </form>
+        ${collegeList}
+      </section>
+    </div>`;
+}
+
+app.addEventListener('change', (e) => {
+  if (e.target.name !== 'level') return;
+  const warn = e.target.closest('form')?.querySelector('[data-pro-warning]') || app.querySelector('[data-pro-warning]');
+  if (warn) warn.hidden = e.target.value !== 'professional';
+  if (e.target.id === 'f_level' && e.target.value === 'professional') toast(PRO_WARNING);
+});
+
+app.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'onboardForm') return;
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const val = (k) => { const v = String(f.get(k) ?? '').trim(); return v === '' ? null : v; };
+  const btn = e.target.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  const a = await supabase.from('players').update({
+    full_name: val('full_name'), college: val('college'), department: val('department'),
+    batch_year: val('batch_year') == null ? null : Number(val('batch_year')), lichess_username: val('lichess_username'),
+  }).eq('id', me.player.id);
+  const b = a.error ? {} : await supabase.rpc('choose_start_level', { chosen: val('level') });
   btn.disabled = false;
   const error = a.error || b.error;
   if (error) { toast(errText(error), 'error'); return; }
-  toast('Profile saved.');
+  toast(`You're in — starting rating ${b.data}.`);
   load();
 });
 

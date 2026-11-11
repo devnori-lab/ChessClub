@@ -14,6 +14,7 @@ export default defineConfig({
         login: resolve(import.meta.dirname, 'login.html'),
         player: resolve(import.meta.dirname, 'player.html'),
         admin: resolve(import.meta.dirname, 'admin.html'),
+        ratings: resolve(import.meta.dirname, 'ratings.html'),
       },
     },
   },

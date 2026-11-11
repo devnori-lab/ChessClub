@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>How ratings work · GBPUAT Chess Club</title>
+  <meta name="description" content="How the GBPUAT Chess Club rating is calculated: starting levels, the Elo formula, and how online Lichess games are handled.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fe7ff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='24' height='24' rx='4' fill='%2304070d' stroke='none'/%3E%3Cpath d='M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1'/%3E%3Cpath d='M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+  <link rel="stylesheet" href="/src/app.css">
+</head>
+<body class="app">
+  <header class="site-header ui-element">
+    <a class="logo-group" href="./">
+      <div class="logo-shield" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="10" y1="4" x2="14" y2="4"/><path d="M8 8c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5c0 1.2-.8 2-1.6 2.8-.9.8-1.4 1.6-1.4 2.7v1"/><path d="M7 15c0-1.2 2-2 5-2s5 .8 5 2l1 5H6l1-5z"/><line x1="6.5" y1="18" x2="17.5" y2="18"/></svg>
+      </div>
+      <div class="logo-text"><span>GBPUAT</span><span>CHESS CLUB</span></div>
+    </a>
+    <nav class="app-header-actions">
+      <a href="./#standings">Standings</a>
+      <a href="ratings.html" aria-current="page">Ratings</a>
+      <a href="login.html">Sign in</a>
+    </nav>
+  </header>
+
+  <main class="app-main rating-doc">
+    <p class="eyebrow-sm">Club rating</p>
+    <h1 class="page-title">How ratings work</h1>
+    <p class="page-sub">Every member has a club rating — a number that goes up when you score better than expected and down when you score worse. It's calculated automatically from the games the committee records.</p>
+
+    <section class="panel">
+      <h2>1 · Your starting rating</h2>
+      <p>When you join, you answer one question: how well do you play? Your answer sets the rating you start from.</p>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Level</th><th>Who it's for</th><th class="num">Starts at</th></tr></thead>
+        <tbody>
+          <tr><td><b>Beginner</b></td><td>You know how the pieces move and play casually.</td><td class="num">800</td></tr>
+          <tr><td><b>Intermediate</b></td><td>You play regularly, know basic openings and tactics.</td><td class="num">1400</td></tr>
+          <tr><td><b>Professional</b></td><td>You play rated tournaments or have a strong online rating.</td><td class="num">1600</td></tr>
+        </tbody>
+      </table></div>
+      <div class="notice warn" style="margin-top:1rem">Choosing <b>Professional</b> puts you straight in among our top players — expect to be paired against them from your very first game.</div>
+      <p class="muted">You can change your answer until your first rated game. After that, only the committee can adjust your starting level.</p>
+    </section>
+
+    <section class="panel">
+      <h2>2 · The formula (Elo)</h2>
+      <p>After each game, both players' ratings change. First we work out how many points you were <i>expected</i> to score against that opponent:</p>
+      <div class="formula" role="math" aria-label="E equals 1 divided by 1 plus 10 to the power of opponent's rating minus your rating, over 400">
+        E = 1 ÷ ( 1 + 10<sup>(R<sub>opp</sub> − R) / 400</sup> )
+      </div>
+      <p>Then your new rating is your old rating plus <i>K</i> times the difference between what you scored and what you were expected to score:</p>
+      <div class="formula" role="math" aria-label="R new equals R plus K times S minus E">
+        R<sub>new</sub> = R + K × ( S − E )
+      </div>
+      <dl class="defs">
+        <dt>R</dt><dd>your rating before the game; <b>R<sub>opp</sub></b> is your opponent's.</dd>
+        <dt>E</dt><dd>your expected score, between 0 and 1. Equal ratings → 0.5. Every 400 points of difference makes the stronger player 10× more likely to win.</dd>
+        <dt>S</dt><dd>what you actually scored: <b>1</b> for a win, <b>½</b> for a draw, <b>0</b> for a loss.</dd>
+        <dt>K</dt><dd>how fast ratings move: <b>40</b> for your first 30 rated games (so new players find their level quickly), then <b>20</b>.</dd>
+      </dl>
+      <p class="muted">The change is rounded to the nearest whole point.</p>
+    </section>
+
+    <section class="panel">
+      <h2>3 · Examples</h2>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Game</th><th class="num">Expected</th><th class="num">Change</th></tr></thead>
+        <tbody>
+          <tr><td>New <b>800</b> beginner <b>beats</b> a new 1400 player (K 40)</td><td class="num">0.03</td><td class="num">+39 / −39</td></tr>
+          <tr><td>Two new 1400 players, one <b>wins</b> (K 40)</td><td class="num">0.50</td><td class="num">+20 / −20</td></tr>
+          <tr><td>Established <b>1600</b> <b>draws</b> an established 1400 (K 20)</td><td class="num">0.76</td><td class="num">−5 / +5</td></tr>
+          <tr><td>Established 1600 <b>beats</b> an established 1400 (K 20)</td><td class="num">0.76</td><td class="num">+5 / −5</td></tr>
+        </tbody>
+      </table></div>
+      <p class="muted">Beating a much stronger player earns a lot; beating a much weaker one earns very little.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Try it</h2>
+      <form class="form" id="calc" onsubmit="return false">
+        <div class="form-grid">
+          <div class="field"><label for="cR">Your rating</label><input id="cR" type="number" min="100" max="3000" value="1400"></div>
+          <div class="field"><label for="cO">Opponent's rating</label><input id="cO" type="number" min="100" max="3000" value="1600"></div>
+          <div class="field"><label for="cS">Result</label>
+            <select id="cS"><option value="1">I won</option><option value="0.5" selected>Draw</option><option value="0">I lost</option></select></div>
+          <div class="field"><label for="cN">Rated games you've played</label><input id="cN" type="number" min="0" value="5"></div>
+        </div>
+        <p class="calc-out" id="cOut" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>4 · What counts</h2>
+      <ul class="plain-list">
+        <li><b>Counts:</b> rated <b>over-the-board</b> (offline) games with a real result — a win, loss or draw — in rated events or rated friendlies.</li>
+        <li><b>Doesn't count:</b> forfeits, unfinished games, unrated events, and <b>online games</b>.</li>
+        <li><b>Order:</b> games are replayed in the order they were played. If a result is corrected or a game is added late, every rating is recalculated from the start — so the numbers are always consistent.</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>5 · Online (Lichess) rounds</h2>
+      <p>Online events are played on Lichess, which already rates every game. So online games <b>don't change your club rating</b>. Instead, when the committee records a Lichess game, we read both players' Lichess ratings from the game itself (the <code>WhiteElo</code>, <code>BlackElo</code> and rating-change tags in its PGN) and show your <b>latest Lichess rating</b> alongside your club rating.</p>
+      <p class="muted">Add your Lichess username to your profile so your online games are matched to you.</p>
+    </section>
+  </main>
+
+  <script type="module" src="/src/ratings.js"></script>
+</body>
+</html>
